@@ -1,0 +1,1907 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ERP Producción</title>
+
+<!-- Chart.js para Dashboard -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- XLSX para exportar -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+	
+<style>
+  :root{
+    --sidebar:#000; --sidebar-hover:#222; --content-bg:#ecf0f1; --btn:#bdc3c7; --btn-hover:#95a5a6;
+    --header-bg:#f5f5f5; --border:#ddd; --accent:#0ea5e9; --danger:#ef4444; --ok:#10b981;
+  }
+  *{box-sizing:border-box}
+  body{ margin:0; font-family:Arial, sans-serif; display:flex; background:var(--content-bg); min-height:100vh; }
+
+  /* Sidebar */
+  .sidebar{ width:240px; background:var(--sidebar); color:#fff; min-height:100vh; transition:width .25s; overflow:auto; }
+  .sidebar.collapsed{ width:72px; }
+  .sidebar h2{ text-align:center; margin:0; padding:15px 0; background:#111; font-size:18px;}
+  .sidebar ul{ list-style:none; padding:0; margin:0; }
+  .sidebar ul li{ padding:12px 18px; display:flex; align-items:center; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.06); user-select:none; }
+  .sidebar ul li:hover, .sidebar ul li.active{ background:var(--sidebar-hover); }
+  .sidebar ul li i{ margin-right:10px; min-width:20px; text-align:center; }
+  .sidebar .submenu{ display:none; background:#0b0b0b; }
+  .sidebar .submenu li{ padding-left:36px; font-size:14px; }
+  .sidebar.collapsed .submenu li{ padding-left:18px; }
+  .sidebar.collapsed ul li span{ display:none; }
+
+  /* Content */
+  .content{ flex:1; padding:20px; }
+  .top-bar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px; flex-wrap:wrap; }
+  .btn{ background:var(--btn); color:#2c3e50; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:14px;}
+  .btn:hover{ background:var(--btn-hover); }
+  .btn-accent{ background:var(--accent); color:#fff; }
+  .btn-accent:hover{ filter:brightness(.95); }
+  .btn-badge{ position:relative; }
+  .badge{ position:absolute; top:-6px; right:-6px; background:var(--danger); color:#fff; font-size:11px; padding:2px 6px; border-radius:999px; }
+  .search-box input{ width:280px; padding:6px; border-radius:6px; border:1px solid #cfcfcf; }
+
+  h1{ margin:4px 0 14px 0; }
+  .hidden{ display:none !important; }
+  .section-note{ color:#555; font-size:13px; margin-bottom:8px; }
+
+  /* Tables */
+  table{ width:100%; border-collapse:collapse; background:#fff; font-size:12.5px; }
+  th, td{ border:1px solid var(--border); padding:6px; text-align:center; }
+  th{ background:var(--header-bg); font-weight:bold; position:relative; user-select:none; }
+  th.sortable{ cursor:pointer; }
+  th.sortable:after{ content:"↕"; font-size:11px; color:#666; margin-left:6px; }
+  th.sortable.asc:after{ content:"↑"; }
+  th.sortable.desc:after{ content:"↓"; }
+
+  /* Filtros ERP */
+  th .filter-box{ display:inline-block; position:relative; margin-left:6px; }
+  th .filter-trigger{ visibility:hidden; cursor:pointer; font-size:12px; padding:2px 4px; border-radius:4px; }
+  th:hover .filter-trigger{ visibility:visible; }
+  .filter-box.active .filter-trigger{ background:#e5e7eb; }
+  .filter-content{ display:none; position:absolute; top:22px; left:0; background:#fff; border:1px solid #ccc; z-index:3000;
+                   box-shadow:0 6px 14px rgba(0,0,0,.15); min-width:240px; max-height:320px; overflow:auto; padding:8px; text-align:left; }
+  .filter-box.active .filter-content{ display:block; }
+  .filter-head{ display:flex; gap:6px; align-items:center;}
+  .filter-head input{ flex:1; padding:4px 6px; border:1px solid #ddd; border-radius:4px; font-size:12px; }
+  .filter-actions{ display:flex; justify-content:space-between; margin-top:6px; }
+  .filter-actions .mini{ font-size:12px; padding:4px 8px; border:1px solid #ddd; background:#f8fafc; border-radius:4px; cursor:pointer;}
+  .filter-actions .mini:hover{ background:#eef2f7; }
+  .filter-options{ margin-top:6px; max-height:200px; overflow:auto; }
+  .filter-item{ font-size:13px; padding:2px 0; white-space:nowrap; display:flex; gap:6px; align-items:center;}
+  .filter-item small{ color:#888; }
+
+  /* Paginación */
+  .pager{ display:flex; align-items:center; gap:8px; margin:6px 0 10px; flex-wrap:wrap;}
+  .pager select{ padding:4px; }
+  .pager .info{ color:#555; font-size:12px; }
+
+  /* Cards & dashboard grid */
+  .card{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; margin-bottom:14px; }
+  .dashboard-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+
+  /* Overlay Loading */
+  .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:5000; }
+  .overlay .panel{ background:#111; color:#fff; padding:20px 26px; border-radius:10px; min-width:260px; text-align:center; }
+  .overlay .spinner{ margin:0 auto 10px auto; border:4px solid rgba(255,255,255,.15); border-top:4px solid #fff; border-radius:50%; width:36px; height:36px; animation:spin 1s linear infinite;}
+  @keyframes spin{ 100%{ transform:rotate(360deg);} }
+
+  /* Modal */
+  .modal{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; z-index:4000; padding:14px; }
+  .modal .window{ background:#fff; border-radius:10px; width:min(1250px, 98vw); max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+  .modal .head{ padding:10px 12px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .modal .head .tools{ display:flex; gap:6px; }
+  .modal .head .tools .btn{ padding:6px 10px; font-size:12px; }
+  .modal .body{ padding:10px; overflow:auto; }
+  .close{ background:#eee; border:none; border-radius:6px; padding:6px 10px; cursor:pointer; }
+
+  /* Print */
+  @media print{
+    body *{ visibility:hidden !important; }
+    .printable, .printable *{ visibility:visible !important; }
+    .printable{ position:absolute; left:0; top:0; width:100%; }
+    .filter-content{ display:none !important; }
+  }
+
+  /* Responsive */
+  @media(max-width:900px){
+    .dashboard-grid{ grid-template-columns:1fr; }
+    .sidebar{ position:fixed; z-index:3500; }
+    .content{ margin-left:0; }
+    /* Botón menú siempre visible en móvil: lo dejamos fuera del flujo de tabla */
+  }
+
+  /* Compactación extra para tablas anchas (evitar scroll) */
+  #porTemplarSection table, #porEntregarSection table, .modal table{
+    font-size:12px;
+  }
+/* Celdas del modal en una sola línea */
+.modal table th,
+.modal table td {
+  white-space: nowrap;     
+  overflow: visible;       
+  text-overflow: unset;    
+}
+
+/* Ajustar automáticamente el ancho del modal según su contenido */
+.modal .window {
+  display: inline-block;      /* se ajusta al contenido */
+  max-width: 98vw;            /* no más que la pantalla */
+  width: auto;                /* ancho según contenido */
+}
+.modal .body {
+  overflow-x: auto;           /* por si acaso en pantallas pequeñas */
+}
+
+/* ===========================
+   Ajustes para impresión
+   =========================== */
+@media print {
+  /* Asegurar que las celdas no hagan salto de línea */
+  table th, 
+  table td {
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+  }
+
+  /* Hacer que las tablas ocupen todo el ancho disponible */
+  table {
+    width: auto !important;
+  }
+
+  /* Quitar límites de modal en impresión */
+  .modal .window {
+    width: auto !important;
+    max-width: none !important;
+  }
+}
+
+/* ===== Pie de página con fecha de última actualización en impresión ===== */
+@media print {
+  @page {
+    size: landscape;
+    margin: 15mm;
+  }
+
+  body::after {
+    content: "Última actualización: " attr(data-ultima) " | Vista: " attr(data-vista);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    font-size: 11px;
+    color: #444;
+  }
+}
+
+.ultimaInfo {
+  font-size: 12px;
+  color: #555;
+  margin: 4px 0 10px 0;
+  font-style: italic;
+}
+
+@media print {
+  @page {
+    size: legal landscape; /* oficio horizontal */
+    margin: 10mm;
+  }
+  body * { visibility:hidden; }
+  .printable, .printable * { visibility:visible; }
+  .printable { position:absolute; left:0; top:0; width:100%; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+}
+
+/* Planilla */
+#planillaLogo {
+  max-height: 60px;
+}
+
+.planillaTabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: center;
+}
+
+.planillaTabla th, .planillaTabla td {
+  border: 1px solid #000;
+  padding: 2px 4px;
+}
+
+.planillaTabla th {
+  background: #f4f4f4;
+  font-size: 11px;
+}
+
+
+  /* SOLO afecta a la planilla */
+  #planillaContainer .planilla{width:100%;border-collapse:collapse;font-size:11px;}
+  #planillaContainer .planilla th,
+  #planillaContainer .planilla td{border:1px solid #000;padding:4px 5px;text-align:center;}
+  #planillaContainer .no-b{border:none!important}
+  #planillaContainer .left{text-align:left} .right{text-align:right} .center{text-align:center}
+  #planillaContainer .title{font-weight:700;font-size:14px;text-align:center}
+  #planillaContainer .mini{border:none;border-bottom:1px solid #000;width:120px}
+  /* cuadricula 3x3 del extremo derecho */
+  #planillaContainer .mini-grid{width:78px;height:60px;border-collapse:collapse;float:right}
+  #planillaContainer .mini-grid td{border:1px solid #000}
+  /* anchos de las 16 columnas para alineación estable (aprox. Excel) */
+  #planillaContainer .planilla col.c1{width:3%}   /* ITEM */
+  #planillaContainer .planilla col.c2{width:6.5%} /* CANASTA */
+  #planillaContainer .planilla col.c3{width:7%}   /* SO NUM */
+  #planillaContainer .planilla col.c4{width:10%}  /* REFERENCIA */
+  #planillaContainer .planilla col.c5{width:6%}   /* CANTIDAD */
+  #planillaContainer .planilla col.c6{width:6%}   /* LONGITUD */
+  #planillaContainer .planilla col.c7{width:7%}   /* PRODUCCIÓN */
+  #planillaContainer .planilla col.c8{width:13%}  /* CLIENTE */
+  #planillaContainer .planilla col.c9{width:11%}  /* ACABADO */
+  #planillaContainer .planilla col.c10{width:7.5%}/* PRENSA */
+  #planillaContainer .planilla col.c11{width:3.5%}/* WT */
+  #planillaContainer .planilla col.c12{width:5%}  /* TEMPLE */
+  #planillaContainer .planilla col.c13{width:13%} /* RESISTENCIA */
+  #planillaContainer .planilla col.c14{width:4.5%}/* ALEACIÓN */
+  #planillaContainer .planilla col.c15{width:5.5%}/* REPROCESO */
+  #planillaContainer .planilla col.c16{width:7%}  /* FIRMA */
+
+.card-horno {
+  background: #fff;
+  border: 1px solid #ddd;   /* Borde gris claro */
+  border-radius: 10px;      /* Bordes redondeados */
+  padding: 15px;
+  width: 280px;             /* Ajusta el ancho si quieres más compacto */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08); /* Sombra suave */
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-horno:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+.card-horno h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #2563eb;
+}
+.linea-gris {
+  background: #f5f7fa;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.total {
+  margin-top: 5px;
+  font-weight: bold;
+}
+.barra-total {
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.barra-total span {
+  display: block;
+  height: 100%;
+  background: #3b82f6;
+}
+.dashboard-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+}
+
+.dashboard-main-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+
+.titulo-en-temple {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 24px 0;
+  font-weight: bold;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.titulo-en-temple span.total-general {
+  font-weight: normal;
+  font-size: 14px;
+  color: #555;
+}
+
+.hora-ampm-input {
+  border: none;
+  background: transparent;
+  font-weight: bold;
+  color: #000;
+  width: 70px;
+}
+.hora-ampm-input:focus {
+  outline: none;
+  border-bottom: 1px solid #003366;
+}
+
+
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <h2>ERP</h2>
+  <ul>
+    <li class="active" data-menu="dashboard" onclick="showMenu('dashboard')"><i>📊</i><span>Dashboard</span></li>
+
+    <li id="extrusionMenu" onclick="toggleSubmenu('extrusion')"><i>🏭</i><span>Extrusión</span></li>
+    <ul class="submenu" id="extrusionSubmenu">
+      <li data-menu="por-templar" onclick="showMenu('por-templar')">Por Templar</li>
+    </ul>
+
+    <li id="sortingMenu" onclick="toggleSubmenu('sorting')"><i>🗂</i><span>Sorting</span></li>
+    <ul class="submenu" id="sortingSubmenu">
+      <li data-menu="por-entregar" onclick="showMenu('por-entregar')">Por Entregar</li>
+    </ul>
+     
+    <li id="reportesMenu" onclick="toggleSubmenu('reportes')"><i>📄</i><span>Reportes</span></li>
+    <ul class="submenu" id="reportesSubmenu">
+      <li data-menu="planilla-envejecimiento" onclick="showMenu('planilla-envejecimiento')">Envejecimiento</li>
+      <li data-menu="en-temple" onclick="showMenu('en-temple')">En Temple</li>
+    </ul>
+	
+  </ul>
+</div>
+
+<!-- Main content -->
+<div class="content">
+  <div class="top-bar">
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn" onclick="toggleSidebar()">☰</button>
+      <button class="btn btn-accent" id="btnActualizar" onclick="handleActualizar()">Actualizar</button>
+
+      <!-- Botones de novedades (badges) -->
+      <button id="btnNovedadesExtrusion" class="btn btn-badge hidden" onclick="openModal('modalExtrusion')">Novedades Extrusión</button>
+      <button id="btnNovedadesSorting" class="btn btn-badge hidden" onclick="openModal('modalSorting')">Novedades Sorting</button>
+    </div>
+    <div class="search-box">
+      <input id="globalSearch" placeholder="Buscar en la tabla visible..." oninput="applyGlobalSearch(this.value)">
+      <button class="btn" onclick="exportVisibleTable()">Exportar Excel</button>
+      <button class="btn" onclick="printVisible()">Imprimir</button>
+    </div>
+  </div>
+
+  <h1 id="pageTitle">Dashboard</h1>	
+
+  <!-- Dashboard -->
+  <div id="dashboardSection">
+  <div id="ultimaInfoDashboard" class="ultimaInfo">Última actualización: -</div>
+    <div class="card" style="max-width:520px; margin:auto;">
+      <div id="tablaResumenPendientes"></div>
+    </div>
+    <div class="dashboard-main-grid">
+      <div class="card"><canvas id="chartKgDescripcion"></canvas></div>
+      <div class="card"><canvas id="chartKgPrio"></canvas></div>
+      <div class="card"><canvas id="chartDiferenciasHorno"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Extrusión / Por Templar -->
+  <div id="porTemplarSection" class="hidden">
+  <div id="ultimaInfoTemplar" class="ultimaInfo">Última actualización: -</div>
+    <div class="section-note">Pendientes (EXTRUDE vs TMP-IN). Usa los filtros ⏷, el total se actualiza con lo filtrado.</div>
+    <div class="pager">
+      <label>Mostrar
+        <select id="pgSizeA" onchange="renderPaged('tablaPendientes')">
+         <option>10</option><option>25</option><option>50</option><option>100</option>
+         <option>250</option><option>500</option>
+         <option value="999999">Todos</option>
+        </select> registros
+      </label>
+      <div class="info" id="infoA"></div>
+    </div>
+    <div class="card printable">
+      <table id="tablaPendientes"><thead><tr>
+        <th class="sortable" data-col="0">Soitem <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="0"></div></span></th>
+        <th class="sortable" data-col="1">Part <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="1"></div></span></th>
+        <th class="sortable" data-col="2">Descripción <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="2"></div></span></th>
+        <th class="sortable" data-col="3">Prio <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="3"></div></span></th>
+        <th class="sortable" data-col="4">Pzs Pend <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="4"></div></span></th>
+        <th class="sortable" data-col="5">Kg Pend <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="5"></div></span></th>
+        <th class="sortable" data-col="6">Long <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="6"></div></span></th>
+        <th class="sortable" data-col="7">Máquina <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="7"></div></span></th>
+        <th class="sortable" data-col="8">Línea <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="8"></div></span></th>
+        <th class="sortable" data-col="9">Temper <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="9"></div></span></th>
+        <th class="sortable" data-col="10">Fecha <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="10"></div></span></th>
+        <th class="sortable" data-col="11">Aleación <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="11"></div></span></th>
+        <th class="sortable" data-col="12">Planta <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="12"></div></span></th>
+        <th class="sortable" data-col="13">Cliente <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="13"></div></span></th>
+      </tr></thead><tbody></tbody>
+      <tfoot><tr><td colspan="5" style="text-align:right"><b>TOTAL Kg Pend:</b></td><td id="totalKgPend">0</td><td colspan="8"></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+
+
+  <!-- Sorting / Por Entregar -->
+  <div id="porEntregarSection" class="hidden">
+  <div id="ultimaInfoEntregar" class="ultimaInfo">Última actualización: -</div>
+    <div class="section-note">Pendientes TMP-IN vs TEMPER. Usa Actualizar cuando entres a esta vista.</div>
+    <div class="card" style="margin-bottom:8px;">
+      <label style="display:none;">Fecha Inicial: <input type="date" id="fechaInicial" value="2025-01-01"></label>
+      <label>Fecha Final: <input type="date" id="fechaFinal"></label>
+    </div>
+
+    <div class="pager">
+      <label>Mostrar
+        <select id="pgSizeB" onchange="renderPaged('tablaPendientesTemper')">
+          <option>10</option><option>25</option><option>50</option><option>100</option>
+          <option>250</option><option>500</option>
+          <option value="999999">Todos</option>
+        </select> registros
+      </label>
+      <div class="info" id="infoB"></div>
+    </div>
+
+    <div class="card printable">
+      <table id="tablaPendientesTemper"><thead><tr>
+        <th class="sortable" data-col="0">Soitem <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="0"></div></span></th>
+        <th class="sortable" data-col="1">Pzs TMP-IN <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="1"></div></span></th>
+        <th class="sortable" data-col="2">Pzs TEMPER <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="2"></div></span></th>
+        <th class="sortable" data-col="3">Diferencia <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="3"></div></span></th>
+        <th class="sortable" data-col="4">Máquina <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="4"></div></span></th>
+        <th class="sortable" data-col="5">Part <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="5"></div></span></th>
+        <th class="sortable" data-col="6">Acabado <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="6"></div></span></th>
+        <th class="sortable" data-col="7">Turno <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="7"></div></span></th>
+        <th class="sortable" data-col="8">Fecha <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="8"></div></span></th>
+        <th class="sortable" data-col="9">Horas <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="9"></div></span></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    </div>
+ 
+
+<!-- Reportes / Planilla Envejecimiento -->
+    <div id="planillaEnvejecimientoSection" class="hidden">
+      <!-- Encabezado de filtros -->
+      <div class="card" style="margin-bottom:12px;">
+        <label>Fecha: <input type="date" id="fechaPlanilla"></label>
+        <label>Turno:
+          <select id="turnoPlanilla">
+            <option value="1">Turno 1</option>
+            <option value="2">Turno 2</option>
+            <option value="3">Turno 3</option>
+          </select>
+        </label>
+        <label>Horno:
+          <select id="hornoPlanilla">
+            <option value="ITALIANO">ITALIANO</option>
+            <option value="HORNO 5">HORNO 5</option>
+            <option value="HORNO 7-3">HORNO 7-3</option>
+            <option value="HORNO 7-4">HORNO 7-4</option>
+            <option value="HORNO 7-5">HORNO 7-5</option>
+            <option value="HORNO 9-1">HORNO 9-1</option>
+            <option value="HORNO 9-2">HORNO 9-2</option>
+            <option value="HORNO 9-3">HORNO 9-3</option>
+            <option value="HORNO 10">HORNO 10</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Planilla -->
+      <div class="card printable" id="planillaContainer">
+        <table class="planilla" style="border-collapse:collapse; font-size:11px;" border="1">
+          <colgroup>
+            <col style="width:5%">
+            <col style="width:7%">
+            <col style="width:7%">
+            <col style="width:9%">
+            <col style="width:6%">
+            <col style="width:7%">
+            <col style="width:8%">
+            <col style="width:12%">
+            <col style="width:10%">
+            <col style="width:7%">
+            <col style="width:5%">
+            <col style="width:5%">
+            <col style="width:10%">
+            <col style="width:6%">
+            <col style="width:6%">
+            <col style="width:8%">
+          </colgroup>
+
+          <!-- Encabezado logo/código -->
+          <tr>
+            <td colspan="8" style="border:none; text-align:left;">
+              <img src="alutions-logo.png" style="max-height:46px">
+            </td>
+            <td colspan="8" style="border:none; text-align:right; font-size:11px;">
+              <b>FO-PR-E-02</b><br>
+              Versión: 02 &nbsp; Fecha: 23-05-2017
+            </td>
+          </tr>
+
+          <!-- Título -->
+          <tr>
+            <td colspan="16" style="text-align:center; font-weight:bold; font-size:14px;">
+              PROCESO DE ENVEJECIMIENTO
+            </td>
+          </tr>
+
+          <!-- Fecha/Turno/Horno -->
+          <tr>
+            <td colspan="6"><b>FECHA DE INGRESO DEL CICLO:</b> <span id="fechaIngreso" contenteditable="true"></span></td>
+            <td colspan="4" style="text-align:center"><b>TURNO:</b> <span id="turnoTexto" contenteditable="true"></span></td>
+            <td colspan="6">
+              <b>HORNO:</b> <span id="hornoTexto" contenteditable="true"></span><br>
+              <b>CARGA NO.:</b> <span contenteditable="true">HOJA A</span>
+            </td>
+          </tr>
+
+          <!-- Cabecera -->
+          <tr>
+            <th>ITEM</th><th>CANASTA</th><th>SO NUM</th><th>REFERENCIA</th>
+            <th>CANTIDAD</th><th>LONGITUD</th><th>PRODUCCIÓN (Kg)</th>
+            <th>CLIENTE</th><th>ACABADO</th><th>PRENSA</th>
+            <th>WT</th><th>TEMPLE</th><th>RESISTENCIA A LA TRACCIÓN (MPa)</th>
+            <th>ALEACIÓN</th><th>REPROCESO</th><th>FIRMA DE RECIBIDO</th>
+          </tr>
+
+          <!-- Cuerpo dinámico -->
+          <tbody id="tbodyPlanilla"></tbody>
+
+          <!-- Fila notas -->
+          <tr>
+            <td colspan="16" contenteditable="true" style="text-align:left"><b>NOTAS:</b></td>
+          </tr>
+
+          <!-- Horas + Ciclo -->
+          <tr>
+            <td colspan="6" contenteditable="true"><b>Hora inicio horno:</b> ______</td>
+            <td colspan="4" contenteditable="true" style="text-align:center"><b>TIPO DE CICLO DE ENVEJECIDO</b><br>1 [ ]  2 [ ]  3 [ ]</td>
+            <td colspan="6" contenteditable="true"><b>Hora final horno:</b> ______</td>
+          </tr>
+
+          <!-- Responsables -->
+          <tr>
+            <td colspan="4" contenteditable="true"><b>Supervisor:</b> __________</td>
+            <td colspan="4" contenteditable="true"><b>Responsable de tomar temple:</b> __________</td>
+            <td colspan="4" contenteditable="true"><b>Responsable de realizar reporte:</b> __________</td>
+            <td colspan="4" contenteditable="true"><b>Responsable de meter la carga:</b> __________</td>
+          </tr>
+
+          <!-- Código equipo + cuadricula -->
+          <tr>
+            <td colspan="14" contenteditable="true"><b>Código equipo utilizado:</b> __________</td>
+            <td colspan="2">
+              <table style="width:100%; height:45px; border-collapse:collapse;" border="1">
+                <tr><td></td><td></td><td></td></tr>
+                <tr><td></td><td></td><td></td></tr>
+                <tr><td></td><td></td><td></td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div> <!-- 🔹 fin de #planillaEnvejecimientoSection -->
+
+</div> <!-- 🔹 cierre de .content -->
+
+<!-- Reportes / En Temple -->
+<div id="enTempleSection" class="hidden">
+  <div class="card" style="margin-bottom:12px;">
+    <label>Fecha: <input type="date" id="fechaEnTemple"></label>
+    <label>Turno:
+      <select id="turnoEnTemple">
+        <option value="1">Turno 1</option>
+        <option value="2">Turno 2</option>
+        <option value="3">Turno 3</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="card printable">
+<div id="tituloEnTemple" class="titulo-en-temple"></div>
+    <div id="tablaEnTempleContainer">
+      <i>Selecciona fecha y turno para mostrar resultados</i>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+<!-- Modal: Novedades Extrusión -->
+<div class="modal" id="modalExtrusion">
+  <div class="window">
+    <div class="head">
+      <b>Novedades - Extrusión</b>
+      <div class="tools">
+        <button class="btn" onclick="exportTable('tablaNovedades')">Exportar</button>
+        <button class="close" onclick="closeModal('modalExtrusion')">Cerrar</button>
+      </div>
+    </div>
+    <div class="body printable">
+      <div class="pager">
+        <label>Mostrar
+          <select id="pgSizeNvx" onchange="renderPaged('tablaNovedades')">
+            <option>10</option><option>25</option><option>50</option><option>100</option>
+            <option value="999999">Todos</option>
+          </select> registros
+        </label>
+        <div class="info" id="infoNvx"></div>
+      </div>
+      <table id="tablaNovedades"><thead><tr>
+        <th class="sortable" data-col="0">Soitem</th><th class="sortable" data-col="1">Part</th><th class="sortable" data-col="2">Descripción</th>
+        <th class="sortable" data-col="3">Prio</th><th class="sortable" data-col="4">Pzs TMP-IN</th>
+        <th class="sortable" data-col="5">Kg TMP-IN</th><th class="sortable" data-col="6">Pzs EXTRUDE</th><th class="sortable" data-col="7">Kg EXTRUDE</th>
+        <th class="sortable" data-col="8">Dif Pzs</th><th class="sortable" data-col="9">Dif Kg</th>
+        <th class="sortable" data-col="10">Máquina</th><th class="sortable" data-col="11">Fecha</th><th class="sortable" data-col="12">Línea</th><th class="sortable" data-col="13">Planta</th><th class="sortable" data-col="14">Cliente</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Novedades Sorting -->
+<div class="modal" id="modalSorting">
+  <div class="window">
+    <div class="head">
+      <b>Novedades - Sorting</b>
+      <div class="tools">
+        <button class="btn" onclick="exportTable('tablaTemperMayor')">Exportar</button>       
+        <button class="close" onclick="closeModal('modalSorting')">Cerrar</button>
+      </div>
+    </div>
+    <div class="body printable">
+      <div class="pager">
+        <label>Mostrar
+          <select id="pgSizeNvs" onchange="renderPaged('tablaTemperMayor')">
+            <option>10</option><option>25</option><option>50</option><option>100</option>
+            <option value="999999">Todos</option>
+          </select> registros
+        </label>
+        <div class="info" id="infoNvs"></div>
+      </div>
+      <table id="tablaTemperMayor"><thead><tr>
+        <th class="sortable" data-col="0">Soitem</th><th class="sortable" data-col="1">Pzs TMP-IN</th><th class="sortable" data-col="2">Pzs TEMPER</th>
+        <th class="sortable" data-col="3">Diferencia</th><th class="sortable" data-col="4">Máquina</th><th class="sortable" data-col="5">Part</th>
+        <th class="sortable" data-col="6">Acabado</th><th class="sortable" data-col="7">Turno</th><th class="sortable" data-col="8">Fecha</th><th class="sortable" data-col="9">Horas</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- Overlay -->
+<div class="overlay" id="loadingOverlay">
+  <div class="panel"><div class="spinner"></div><div id="loadingText">Cargando datos...</div></div>
+</div>
+
+<script>
+/* ===========================
+   Estado / Cache
+   =========================== */
+let currentView='dashboard';
+let lineasMap={};
+let datosPendientes=[];    // Extrusión → Por Templar
+let datosNovedades=[];     // Extrusión → Novedades (Modal)
+let mayoresTMP=[];         // Sorting → Por Entregar (pendientes)
+let mayoresTemper=[];      // Sorting → Novedades (Modal)
+
+let cacheAOk=false, cacheBOk=false; // para no recargar si ya se tiene
+let ultimaActualizacion = "";
+let ultimaVista = "Dashboard";   // ⬅️ nueva variable
+
+
+/* ===========================
+   UI Básica
+   =========================== */
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
+function toggleSubmenu(name){const el=document.getElementById(name+'Submenu'); if(el) el.style.display=el.style.display==='block'?'none':'block';}
+function setLoading(show,text){const ov=document.getElementById('loadingOverlay');document.getElementById('loadingText').textContent=text||'Cargando datos...';ov.style.display=show?'flex':'none';}
+
+function showMenu(view){
+  currentView=view;
+
+  // Cambia el título
+  if(view==='dashboard') document.getElementById('pageTitle').textContent='Dashboard';
+  if(view==='por-templar') document.getElementById('pageTitle').textContent='Extrusión → Por Templar';
+  if(view==='por-entregar') document.getElementById('pageTitle').textContent='Sorting → Por Entregar';
+  if(view==='planilla-envejecimiento') document.getElementById('pageTitle').textContent='Reportes → Planilla Envejecimiento';
+  if(view==='en-temple') document.getElementById('pageTitle').textContent='Reportes → En Temple';
+
+
+  // Ocultar todas
+  document.getElementById('dashboardSection').classList.add('hidden');
+  document.getElementById('porTemplarSection').classList.add('hidden');
+  document.getElementById('porEntregarSection').classList.add('hidden');
+  document.getElementById('planillaEnvejecimientoSection').classList.add('hidden');
+  document.getElementById('enTempleSection').classList.add('hidden'); // ocultar
+
+
+  // Mostrar la que corresponde
+  if(view==='dashboard') document.getElementById('dashboardSection').classList.remove('hidden');
+  if(view==='por-templar') document.getElementById('porTemplarSection').classList.remove('hidden');
+  if(view==='por-entregar') document.getElementById('porEntregarSection').classList.remove('hidden');
+  if(view==='planilla-envejecimiento') document.getElementById('planillaEnvejecimientoSection').classList.remove('hidden');
+  if(view==='en-temple') document.getElementById('enTempleSection').classList.remove('hidden'); // mostrar 
+
+  // 🔹 Aquí actualizas los botones de la barra superior
+  refreshTopbarButtons();
+}
+
+
+/* ===========================
+   Botones dinámicos en Topbar
+   =========================== */
+function refreshTopbarButtons(){
+  const cont = document.querySelector(".top-bar .search-box");
+  cont.innerHTML = "";
+
+  if(currentView==='dashboard' || currentView==='por-templar' || currentView==='por-entregar'){
+    cont.innerHTML = `
+      <input id="globalSearch" placeholder="Buscar en la tabla visible..." oninput="applyGlobalSearch(this.value)">
+      <button class="btn" onclick="exportVisibleTable()">Exportar Excel</button>
+      <button class="btn" onclick="printVisible()">Imprimir</button>
+    `;
+  }
+
+  if(currentView==='planilla-envejecimiento'){
+    cont.innerHTML = `
+      <button class="btn" onclick="exportarPlanillaExcel()">Exportar Excel</button>
+      <button class="btn" onclick="window.print()">Imprimir</button>
+    `;
+  }
+}
+
+
+
+
+/* ===========================
+   Utilidades comunes
+   =========================== */
+function formatearFecha(fechaISO){
+  if(!fechaISO) return "";
+  const d=new Date(fechaISO); if(isNaN(d.getTime())) return "";
+  const dia=String(d.getDate()).padStart(2,'0'), mes=String(d.getMonth()+1).padStart(2,'0'), anio=d.getFullYear();
+  return `${dia}/${mes}/${anio}`;
+}
+function formatearFechaLocalColombia(dateObj){
+  if(!dateObj) return ''; return new Date(dateObj).toLocaleString('es-CO',{hour12:true});
+}
+function ahoraColombia(){ return new Date(new Date().toLocaleString("en-US",{timeZone:"America/Bogota"})); }
+function calcularDt3(dtStr,dt2Str,shiftValue){
+  const dt=new Date(dtStr), dt2=new Date(dt2Str);
+  const dt2Col=new Date(dt2.toLocaleString("en-US",{timeZone:"America/Bogota"}));
+  const h=dt2Col.getHours(), m=dt2Col.getMinutes(), s=dt2Col.getSeconds();
+  const y=dt.getUTCFullYear(), mo=dt.getUTCMonth(), d=dt.getUTCDate();
+  let dt3=new Date(y,mo,d,h,m,s); const turno=Number(shiftValue);
+  if(turno===2 && h>=0 && h<12) dt3.setDate(dt3.getDate()+1);
+  return dt3;
+}
+function getPlanta(ultimaMachine){
+  const m=(ultimaMachine||"").trim().toUpperCase();
+  if(["PRENSA 7-1","PRENSA 7-2","PRENSA 7-3","PRENSA 7-6","PRENSA 7-7","PRENSA 7-8"].includes(m)) return "A1";
+  if(["PRENSA 7-4"].includes(m)) return "A2";
+  if(["PRENSA 7-5","PRENSA 7-9","PRENSA 7-10"].includes(m)) return "A3";
+  return "OTRA";
+}
+
+/* ===========================
+   Fecha de última actualización
+   =========================== */
+function setUltimaActualizacion() {
+  const ahora = new Date();
+  const hora = ahora.toLocaleString("es-CO", { hour12: true });
+
+  if (currentView === "por-templar") {
+    document.getElementById("ultimaInfoTemplar").textContent =
+      `Última actualización: ${hora}`;
+  }
+  if (currentView === "por-entregar") {
+    document.getElementById("ultimaInfoEntregar").textContent =
+      `Última actualización: ${hora}`;
+  }
+  if (currentView === "dashboard") {
+    document.getElementById("ultimaInfoDashboard").textContent =
+      `Última actualización: ${hora}`;
+  }
+
+  // además se mantiene para impresión
+  document.body.setAttribute("data-ultima", hora);
+  document.body.setAttribute("data-vista", currentView);
+}
+
+/* ===========================
+   Conexiones Reales
+   =========================== */
+async function cargarLineas(){
+  const url="https://api.allorigins.win/raw?url="+encodeURIComponent("https://docs.google.com/spreadsheets/d/e/2PACX-1vRS6VAInZZmrWB1tVnoBZQQnMWuBkfKT3EKCnfDdTkObIQDAZfFFZnk6ga4afkfA-tvEady3I5ZXE07/pub?output=csv");
+  const resp=await fetch(url); const csvText=await resp.text();
+  const rows=csvText.split(/\r?\n/).map(r=>r.split(",")); const headers=rows.shift().map(h=>h.trim().toUpperCase());
+  const claveIndex=headers.findIndex(h=>'SOITEM'===h); const lineaIndex=headers.findIndex(h=>'LINEA'===h);
+  lineasMap={}; rows.forEach(row=>{const clave=(row[claveIndex]||"").trim();const linea=(row[lineaIndex]||"").trim()||"-"; if(clave) lineasMap[clave]=linea;});
+}
+async function consultarDepartamento(fechaInicio,fechaFin,departamento){
+  const payload={Fecha_inicial:fechaInicio,Fecha_final:fechaFin,Departamento:departamento};
+  const resp=await fetch("https://optima.tecnoglass.net/api/alutions_production/reports-producion/Detalle-produccion",{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+  });
+  const json=await resp.json();
+  let detalle=[]; if(json?.data && Array.isArray(json.data)){ json.data.forEach(d=>{ if(Array.isArray(d.DetalleProduccion)) detalle=detalle.concat(d.DetalleProduccion); });}
+  return detalle;
+}
+async function obtenerAleacionTemper(){
+  const hoy=new Date(); const hace3=new Date(hoy); hace3.setDate(hoy.getDate()-3);
+  const desde=hace3.toISOString().slice(0,10), hasta=hoy.toISOString().slice(0,10);
+  const payload={Fecha_inicial:desde,Fecha_final:hasta,Departamento:null};
+  const resp=await fetch("https://optima.tecnoglass.net/api/alutions_production/reporte-extruccion",{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+  });
+  const json=await resp.json(); let prensa=[], sierra=[];
+  if(json?.data && Array.isArray(json.data)){ json.data.forEach(item=>{ if(Array.isArray(item.Prensa)) prensa=prensa.concat(item.Prensa); if(Array.isArray(item.Sierra)) sierra=sierra.concat(item.Sierra); });}
+  const mapa={};
+  prensa.forEach(r=>{const clave=`${r.so}-${r.Soitem}`; mapa[clave]=mapa[clave]||{}; mapa[clave].aleacion=r.Aleacion||"";});
+  sierra.forEach(r=>{const clave=`${r.sonum}-${r.soitemnum}`; mapa[clave]=mapa[clave]||{}; mapa[clave].temper=r.temper||"";});
+  return mapa;
+}
+
+/* ===========================
+   Dashboard (Resumen + Gráficas)
+   =========================== */
+let chart1=null, chart2=null, chart3=null;
+
+function generarTablaResumenPendientes(pendientes){
+  const host=document.getElementById('tablaResumenPendientes');
+  if(!pendientes.length){ host.innerHTML='<i>No hay datos (carga Extrusión/Sorting con Actualizar)</i>'; return; }
+  const resumen={}; // {fecha:{A1,A2,A3}}
+  pendientes.forEach(p=>{
+    const fecha=p.ultimaFecha, planta=p.planta;
+    if(!resumen[fecha]) resumen[fecha]={A1:0,A2:0,A3:0};
+    if(["A1","A2","A3"].includes(planta)) resumen[fecha][planta]+= (Number(p.kgPend)||0);
+  });
+  let totalA1=0,totalA2=0,totalA3=0,totalGeneral=0;
+  let html=`<table><thead><tr><th>Fecha</th><th>A1</th><th>A2</th><th>A3</th><th>Total</th></tr></thead><tbody>`;
+  Object.entries(resumen).forEach(([fecha,plantas])=>{
+    const totalDia=(plantas.A1||0)+(plantas.A2||0)+(plantas.A3||0);
+    totalA1+=plantas.A1||0; totalA2+=plantas.A2||0; totalA3+=plantas.A3||0; totalGeneral+=totalDia;
+    html+=`<tr><td>${fecha}</td><td>${(plantas.A1||0).toFixed(0)}</td><td>${(plantas.A2||0).toFixed(0)}</td><td>${(plantas.A3||0).toFixed(0)}</td><td>${totalDia.toFixed(0)}</td></tr>`;
+  });
+  html+=`<tr><td><b>Total</b></td><td><b>${totalA1.toFixed(0)}</b></td><td><b>${totalA2.toFixed(0)}</b></td><td><b>${totalA3.toFixed(0)}</b></td><td><b>${totalGeneral.toFixed(0)}</b></td></tr>`;
+  html+=`</tbody></table>`;
+  host.innerHTML=html;
+}
+
+function renderDashboard(){
+  // Resumen con datos de Extrusión (si ya cargó)
+  if(datosPendientes.length) generarTablaResumenPendientes(datosPendientes);
+
+  // Chart 1: Kg Pendientes por Descripción (de Por Templar)
+  const byDesc={}; datosPendientes.forEach(r=>{byDesc[r.descrip]=(byDesc[r.descrip]||0)+(Number(r.kgPend)||0);});
+  const c1=document.getElementById('chartKgDescripcion').getContext('2d'); if(chart1) chart1.destroy();
+  chart1=new Chart(c1,{type:'bar',data:{labels:Object.keys(byDesc),datasets:[{label:'Kg Pend',data:Object.values(byDesc)}]}});
+
+  // Chart 2: Kg Pendientes por Prioridad (de Por Templar)
+  const byPrio={}; datosPendientes.forEach(r=>{byPrio[r.prio]=(byPrio[r.prio]||0)+(Number(r.kgPend)||0);});
+  const c2=document.getElementById('chartKgPrio').getContext('2d'); if(chart2) chart2.destroy();
+  chart2=new Chart(c2,{type:'pie',data:{labels:Object.keys(byPrio),datasets:[{data:Object.values(byPrio)}]}});
+
+  // Chart 3: Diferencias por Máquina (de Por Entregar)
+  const byHorno={}; mayoresTMP.forEach(r=>{byHorno[r.Machine]=(byHorno[r.Machine]||0)+(Number(r.pendiente)||0);});
+  const c3=document.getElementById('chartDiferenciasHorno').getContext('2d'); if(chart3) chart3.destroy();
+  chart3=new Chart(c3,{type:'bar',data:{labels:Object.keys(byHorno),datasets:[{label:'Dif',data:Object.values(byHorno)}]}});
+}
+
+/* ===========================
+   Render Tablas y helpers
+   =========================== */
+function clearTable(tableId){ const tb=document.querySelector('#'+tableId+' tbody'); if(tb) tb.innerHTML=''; }
+
+function renderTablaA(){
+  const tb=document.querySelector('#tablaPendientes tbody');
+  tb.innerHTML=datosPendientes.map(r=>`
+    <tr>
+      <td>${r.clave}</td><td>${r.Part}</td><td>${r.descrip}</td><td>${r.prio}</td><td>${r.piezasPend}</td>
+      <td>${(r.kgPend??0).toFixed(0)}</td><td>${r.long}</td><td>${r.ultimaMachine}</td>
+      <td>${r.linea}</td><td>${r.temper}</td><td>${r.ultimaFecha}</td><td>${r.aleacion}</td>
+      <td>${r.planta}</td><td>${r.cliente}</td>
+    </tr>
+  `).join('');
+  buildFiltersFor('tablaPendientes');
+  attachSortHandlers('tablaPendientes');
+  renderPaged('tablaPendientes');
+  recalcTotalKg();
+}
+function renderTablaB(){
+  const tb=document.querySelector('#tablaPendientesTemper tbody');
+  tb.innerHTML=mayoresTMP.map(r=>`
+    <tr>
+      <td>${r.soitem}</td><td>${r.tmpin}</td><td>${r.temper}</td><td>${r.pendiente}</td><td>${r.Machine}</td>
+      <td>${r.Part}</td><td>${r.Descripcion}</td><td>${r.Turno}</td><td>${r.FechaDT3}</td><td>${r.HorasTrans}</td>
+    </tr>
+  `).join('');
+  buildFiltersFor('tablaPendientesTemper');
+  attachSortHandlers('tablaPendientesTemper');
+  renderPaged('tablaPendientesTemper');
+}
+
+function renderTablaNovedades(){
+  const tb=document.querySelector('#tablaNovedades tbody');
+  tb.innerHTML=datosNovedades.map(r=>`
+    <tr>
+      <td>${r.clave}</td><td>${r.Part}</td><td>${r.descrip}</td><td>${r.prio}</td><td>${r.piezasTmp}</td>
+      <td>${(r.kgTmp??0).toFixed(0)}</td><td>${r.piezasExtrude}</td><td>${(r.kgExtrude??0).toFixed(0)}</td>
+      <td>${r.diffPiezas}</td><td>${(r.diffKg??0).toFixed(2)}</td>
+      <td>${r.ultimaMachine}</td><td>${r.ultimaFecha}</td><td>${r.linea}</td><td>${r.planta}</td><td>${r.cliente}</td>
+    </tr>
+  `).join('');
+  attachSortHandlers('tablaNovedades'); renderPaged('tablaNovedades');
+}
+function renderTablaTemperMayor(){
+  const tb=document.querySelector('#tablaTemperMayor tbody');
+  tb.innerHTML=mayoresTemper.map(r=>`
+    <tr>
+      <td>${r.soitem}</td><td>${r.tmpin}</td><td>${r.temper}</td><td>${r.diferencia}</td><td>${r.Machine}</td>
+      <td>${r.Part}</td><td>${r.Descripcion}</td><td>${r.Turno}</td><td>${r.FechaDT3}</td><td>${r.HorasTrans}</td>
+    </tr>
+  `).join('');
+  attachSortHandlers('tablaTemperMayor'); renderPaged('tablaTemperMayor');
+}
+
+function recalcTotalKg(){
+  const tableId='tablaPendientes';
+  const rows=[...document.querySelectorAll('#'+tableId+' tbody tr')].filter(r=>r.style.display!=='none');
+  const total=rows.reduce((s,r)=> s+(Number(r.cells[5].textContent)||0), 0);
+  const el=document.getElementById('totalKgPend'); if(el) el.textContent=total.toLocaleString();
+}
+
+/* ==========================
+   Helpers
+   ========================== */
+
+// Devuelve el primer valor no vacío de un objeto
+const pick = (obj, ...keys) => {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && v !== "") return v;
+  }
+  return "";
+};
+
+// Normaliza texto (ej: hornos, claves)
+const normalize = (s) => (s || "").toString().trim().toUpperCase();
+
+// Divide "allot" en Aleación (números) y Temple (texto)
+function splitAllot(allot){
+  let aleacion = "", temple = "";
+  const txt = (allot ?? "").toString().trim().replace("-", ""); // quitar guiones
+  const m = txt.match(/^\s*(\d{4,})\s*(.*)$/);
+  if (m) { 
+    aleacion = m[1]; 
+    temple = (m[2] || "").trim(); 
+  } else { 
+    aleacion = txt; 
+  }
+  return { aleacion, temple };
+}
+
+/* ==========================
+   Generar Planilla
+   ========================== */
+async function generarPlanilla(){
+  try{
+    const fecha = document.getElementById("fechaPlanilla").value;     // "2025-09-15"
+    const turnoSel = (document.getElementById("turnoPlanilla").value || "").toString().trim(); 
+    const hornoSel = normalize(document.getElementById("hornoPlanilla").value);
+
+    if(!fecha || !turnoSel || !hornoSel){ 
+      alert("⚠️ Selecciona fecha, turno y horno."); 
+      return; 
+    }
+
+    // Calcular rango: fecha y 3 días antes
+    const fechaObj = new Date(fecha);
+    const fechaInicio = new Date(fechaObj); 
+    fechaInicio.setDate(fechaObj.getDate() - 3);
+
+    // --- Llamado API ---
+    const payload = { 
+      Fecha_inicial: fechaInicio.toISOString().slice(0,10), 
+      Fecha_final: fecha, 
+      departamento: 3, 
+      turno: turnoSel, 
+      horno: hornoSel 
+    };
+    const resp = await fetch("https://optima.tecnoglass.net/api/alutions_production/reporte-extruccion", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    });
+    if(!resp.ok) throw new Error("HTTP "+resp.status);
+    const { data = [] } = await resp.json();
+
+    // --- Extraer bloques correctos ---
+    const tmpinData  = (data.find(b => Array.isArray(b?.TMPIN))?.TMPIN)  || [];
+    const sierraData = (data.find(b => Array.isArray(b?.Sierra))?.Sierra) || [];
+
+    // --- Mapa Sierra por clave soitemnum-sonum ---
+    const sierraMap = new Map();
+    for (const s of sierraData){
+      const soitem = pick(s, "soitemnum","Soitemnum","Soitem","soitem");
+      const sonum  = pick(s, "sonum","Sonum","so","So");
+      const key = `${soitem}-${sonum}`;
+      sierraMap.set(key, {
+        long: pick(s, "long","Long","longitud","Longitud"),
+        prensa: pick(s, "MachineName","machine","Prensa","prensa")
+      });
+    }
+
+    // --- Filtro por horno + turno + fecha ---
+    const tmpinFiltrado = tmpinData.filter(r => {
+      const hornoRow  = normalize(pick(r, "MachineName","Horno","horno","machine"));
+      const turnoRow  = (pick(r, "shift","Shift","turno","Turno") || "").toString().trim();
+      const fechaRow  = new Date(r.dt).toISOString().slice(0,10); // normalizar dt
+      return (hornoRow === hornoSel) && (turnoRow === turnoSel) && (fechaRow === fecha);
+    });
+
+    if(!tmpinFiltrado.length){
+      alert("⚠️ No se encontraron registros para ese horno y turno.");
+      return;
+    }
+
+    // --- Rellenar la tabla ---
+    const tbody = document.getElementById("tbodyPlanilla");
+    tbody.innerHTML = "";
+
+    tmpinFiltrado.forEach((r, idx) => {
+      const soitem = pick(r, "soitemnum","Soitemnum","Soitem","soitem");
+      const sonum  = pick(r, "sonum","Sonum","so","So");
+      const clave  = `${soitem}-${sonum}`;   // clave para cruce con Sierra
+
+      const matchS = sierraMap.get(clave) || {};
+      const { aleacion, temple } = splitAllot(pick(r, "allot","Allot"));
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${idx+1}</td>
+        <td>${pick(r,"Rack","rack")}</td>
+        <td>${sonum}-${soitem}</td>
+        <td>${pick(r,"dienum","Part","Referencia","referencia")}</td>
+        <td>${pick(r,"pc","Pc","PcProd","cantidad")}</td>
+        <td>${matchS.long || ""}</td>
+        <td>${pick(r,"kg","Kg","KgProd")}</td>
+        <td>${pick(r,"cliente","Cliente")}</td>
+        <td>${pick(r,"descrip","Descripcion","descripcion")}</td>
+        <td>${matchS.prensa || ""}</td>
+        <td></td> <!-- WT vacío -->
+        <td>${temple}</td>
+        <td>${pick(r,"prio","Prio")}</td>
+        <td>${aleacion}</td>
+        <td></td> <!-- Reproceso vacío -->
+        <td></td> <!-- Firma vacío -->
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // Encabezados
+    document.getElementById("fechaIngreso").textContent = fecha;
+    document.getElementById("turnoTexto").textContent  = turnoSel;
+    document.getElementById("hornoTexto").textContent  = document.getElementById("hornoPlanilla").value;
+
+  }catch(err){
+    console.error(err);
+    alert("❌ Error al generar planilla: "+(err.message||err));
+  }
+}
+
+/* ====== Paginación simple ====== */
+function renderPaged(tableId){
+  let sizeSel, infoEl;
+  if(tableId === 'tablaPendientes'){
+    sizeSel = document.getElementById('pgSizeA');
+    infoEl  = document.getElementById('infoA');
+  } else if(tableId === 'tablaPendientesTemper'){
+    sizeSel = document.getElementById('pgSizeB');
+    infoEl  = document.getElementById('infoB');
+  } else if(tableId === 'tablaNovedades'){
+    sizeSel = document.getElementById('pgSizeNvx');
+    infoEl  = document.getElementById('infoNvx');
+  } else if(tableId === 'tablaTemperMayor'){
+    sizeSel = document.getElementById('pgSizeNvs');
+    infoEl  = document.getElementById('infoNvs');
+  }
+
+  const pageSize = parseInt(sizeSel?.value || '25', 10);
+  const allRows = [...document.querySelectorAll('#'+tableId+' tbody tr')];
+
+  // solo filas que no están filtradas fuera
+  const visibles = allRows.filter(r => r.dataset.filteredOut!=='1');
+
+  // aplicar límite
+  visibles.forEach((r,i)=>{
+    r.style.display = (pageSize >= 999999 || i < pageSize) ? '' : 'none';
+  });
+  // ocultar las que están fuera de la búsqueda/filtros
+  allRows.forEach(r=>{
+    if(r.dataset.filteredOut==='1') r.style.display='none';
+  });
+
+  // actualizar info
+  const total = visibles.length;
+  const showing = (pageSize >= 999999) ? total : Math.min(pageSize,total);
+  if(infoEl) infoEl.textContent = `Mostrando ${showing} de ${total} registros`;
+
+  if(tableId==='tablaPendientes') recalcTotalKg();
+}
+
+
+/* ====== Filtros ERP ====== */
+function toggleFilter(trigger,event){
+  event.stopPropagation();
+  const box=trigger.parentElement;
+  document.querySelectorAll('.filter-box').forEach(f=>{ if(f!==box) f.classList.remove('active'); });
+  box.classList.toggle('active');
+  if(box.classList.contains('active')){
+    const fc=box.querySelector('.filter-content');
+    if(fc && !fc.dataset.ready){ buildFilterBox(fc); fc.dataset.ready='1'; } else { refreshFilterBox(fc); }
+  }
+}
+document.addEventListener('click',(e)=>{
+  document.querySelectorAll('.filter-box').forEach(f=>{ if(!f.contains(e.target)) f.classList.remove('active'); });
+});
+
+function buildFiltersFor(tableId){
+  document.querySelectorAll(`#${tableId} thead .filter-content`).forEach(fc=>{ fc.dataset.ready=''; fc.innerHTML=''; });
+}
+function getVisibleRows(tableId){
+  // visibles según filtros + paginación (para conteos de caja mostramos según toda la tabla sin paginar)
+  return [...document.querySelectorAll('#'+tableId+' tbody tr')].filter(r=>r.style.display!=='none' || r.dataset._keep==='1');
+}
+
+function buildFilterBox(fc){
+  const tableId=fc.dataset.table, col=Number(fc.dataset.col);
+  const head=document.createElement('div'); head.className='filter-head';
+  head.innerHTML=`<input placeholder="Buscar opciones...">`;
+  fc.appendChild(head);
+
+  const actions=document.createElement('div'); actions.className='filter-actions';
+  actions.innerHTML=`
+    <button class="mini" onclick="filterToggleAll('${tableId}',${col})">Seleccionar todo</button>
+    <button class="mini" onclick="filterSelectAll('${tableId}',${col},false)">Limpiar</button>
+    <button class="mini" onclick="filterApply('${tableId}',${col})">Aceptar</button>
+  `;
+  fc.appendChild(actions);
+
+  const options=document.createElement('div'); options.className='filter-options'; fc.appendChild(options);
+
+  head.querySelector('input').addEventListener('input',()=>{
+    const q=head.querySelector('input').value.toLowerCase();
+    options.querySelectorAll('.filter-item').forEach(it=>{
+      const txt=it.dataset.val.toLowerCase(); 
+      it.style.display=txt.includes(q)?'':'none';
+    });
+  });
+
+  refreshFilterBox(fc);
+}
+
+
+function refreshFilterBox(fc){
+  const tableId=fc.dataset.table, col=Number(fc.dataset.col);
+  const options=fc.querySelector('.filter-options'); 
+  if(!options) return;
+
+  // valores en toda la tabla
+  const allValues=new Map(); 
+  document.querySelectorAll('#'+tableId+' tbody tr').forEach(r=>{
+    const v=(r.cells[col]?.textContent||'').trim(); 
+    allValues.set(v,(allValues.get(v)||0)+1);
+  });
+
+  // valores visibles actuales (por filtros + búsqueda)
+  const visibleValues=new Map();
+  document.querySelectorAll('#'+tableId+' tbody tr').forEach(r=>{
+    if(r.dataset.filteredOut!=='1'){ 
+      const v=(r.cells[col]?.textContent||'').trim(); 
+      visibleValues.set(v,(visibleValues.get(v)||0)+1); 
+    }
+  });
+
+  // conservar selección previa (aunque esté vacío)
+  const selectedExisting=new Set();
+  options.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+    if(cb.checked) {
+      selectedExisting.add(cb.closest('.filter-item').dataset.val);
+    }
+  });
+
+  // reconstruir lista
+  options.innerHTML='';
+  Array.from(allValues.keys()).sort((a,b)=>(''+a).localeCompare((''+b),'es')).forEach(v=>{
+    const isChecked = selectedExisting.size>0 ? selectedExisting.has(v) : true;
+    const totalCount=allValues.get(v)||0;
+    const visCount=visibleValues.get(v)||0;
+
+    const row=document.createElement('label'); 
+    row.className='filter-item'; 
+    row.dataset.val=v;
+    row.innerHTML=`
+  <input type="checkbox" ${isChecked?'checked':''}>
+  <span>${v || '<i>(vacío)</i>'}</span>
+  <small>${visCount}/${totalCount}</small>
+`;
+    options.appendChild(row);
+  });
+}
+	function applyHeaderFilter(tableId,col){
+  // Construir mapa de filtros activos (aunque queden 0 seleccionados)
+  const active={};
+  document.querySelectorAll(`#${tableId} thead .filter-content`).forEach(fc=>{
+    const c=Number(fc.dataset.col); 
+    const checks=fc.querySelectorAll('.filter-options input[type="checkbox"]');
+    if(!checks.length) return;
+    const vals=[...checks].filter(x=>x.checked).map(x=>x.closest('.filter-item').dataset.val);
+    active[c]=new Set(vals); // 🔑 incluso si size = 0
+  });
+
+  const rows=document.querySelectorAll('#'+tableId+' tbody tr');
+  rows.forEach(r=>{
+    let visible=true;
+    for(const [c,set] of Object.entries(active)){
+      const val=(r.cells[Number(c)]?.textContent||'').trim();
+      // si no hay ninguno seleccionado → ocultar todo
+      if(set.size===0 || !set.has(val)){
+        visible=false; break;
+      }
+    }
+    r.dataset.filteredOut = visible ? '0' : '1';
+  });
+
+  // refrescar UI, paginación y totales
+  document.querySelectorAll(`#${tableId} thead .filter-content`).forEach(refreshFilterBox);
+  renderPaged(tableId);
+  if(tableId==='tablaPendientes') recalcTotalKg();
+}
+
+
+
+function filterSelectAll(tableId,col,selectAll){
+  const fc=document.querySelector(`.filter-content[data-table="${tableId}"][data-col="${col}"]`);
+  if(!fc) return;
+
+  fc.querySelectorAll('.filter-options input[type="checkbox"]').forEach(cb=>{
+    cb.checked=!!selectAll;
+  });
+
+  applyHeaderFilter(tableId,col);
+  refreshFilterBox(fc); // 🔑 fuerza refresco inmediato en la caja
+}
+
+function filterToggleAll(tableId,col){
+  const fc=document.querySelector(`.filter-content[data-table="${tableId}"][data-col="${col}"]`);
+  if(!fc) return;
+  const checks=[...fc.querySelectorAll('.filter-options input[type="checkbox"]')];
+  if(!checks.length) return;
+
+  const allChecked = checks.every(cb => cb.checked);
+  // Si todos están marcados => desmarcarlos todos; si no, marcarlos todos
+  checks.forEach(cb => cb.checked = !allChecked);
+
+  // 🔑 No llamamos a applyHeaderFilter aquí
+  // Solo actualizamos el estado visual de la caja
+}
+
+function filterApply(tableId,col){
+  applyHeaderFilter(tableId,col);
+  const fc=document.querySelector(`.filter-content[data-table="${tableId}"][data-col="${col}"]`);
+  if(fc) fc.parentElement.classList.remove('active'); // cerrar la caja al aplicar
+}
+
+
+
+/* ===========================
+   Búsqueda global
+   =========================== */
+function getVisibleTableId(){
+  if(!document.getElementById('porTemplarSection').classList.contains('hidden')) return 'tablaPendientes';
+  if(!document.getElementById('porEntregarSection').classList.contains('hidden')) return 'tablaPendientesTemper';
+  return null;
+}
+function applyGlobalSearch(q){
+  const tableId=getVisibleTableId(); 
+  if(!tableId) return;
+  const val=(q||'').toLowerCase();
+
+  const rows=document.querySelectorAll('#'+tableId+' tbody tr');
+  rows.forEach(r=>{
+    const text=r.textContent.toLowerCase();
+    const match=text.includes(val);
+    // flag de visibilidad (para combinar con filtros y paginación)
+    r.dataset.filteredOut = match ? '0' : '1';
+  });
+
+  // refrescar filtros, paginación y totales
+  document.querySelectorAll(`#${tableId} thead .filter-content`).forEach(refreshFilterBox);
+  renderPaged(tableId);
+  if(tableId==='tablaPendientes') recalcTotalKg();
+}
+
+
+/* ===========================
+   Exportar / Imprimir
+   =========================== */
+function exportTable(tableId){
+  const tbl=document.getElementById(tableId);
+  const headers=[...tbl.querySelectorAll('thead th')].map(th=> th.childNodes[0].nodeType===3 ? th.childNodes[0].textContent.trim() : th.childNodes[0].textContent.trim());
+  const data=[headers];
+  tbl.querySelectorAll('tbody tr').forEach(tr=>{
+    if(tr.style.display==='none') return;
+    data.push([...tr.querySelectorAll('td')].map(td=>td.textContent.trim()));
+  });
+  const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb,ws,'Datos'); XLSX.writeFile(wb,(tableId||'datos')+'.xlsx');
+}
+function exportVisibleTable(){ const tableId=getVisibleTableId(); if(!tableId){ alert('No hay tabla visible para exportar.'); return; } exportTable(tableId); }
+function printSelector(sel){
+  // imprime solo el contenedor indicado
+  const el=document.querySelector(sel); if(!el){window.print(); return;}
+  el.classList.add('printable'); window.print(); el.classList.remove('printable');
+}
+function printVisible(){ const tableId=getVisibleTableId(); if(!tableId){ window.print(); return; } window.print(); }
+
+/* ===========================
+   Botones / Modales
+   =========================== */
+function updateNovedadesButton(btnId,count){
+  const btn=document.getElementById(btnId);
+  if(count>0){
+    btn.classList.remove('hidden');
+    let badge=btn.querySelector('.badge'); if(!badge){ badge=document.createElement('span'); badge.className='badge'; btn.appendChild(badge); }
+    badge.textContent=count;
+  }else{
+    btn.classList.add('hidden'); const b=btn.querySelector('.badge'); if(b) b.remove();
+  }
+}
+function openModal(id){ document.getElementById(id).style.display='flex'; }
+function closeModal(id){ document.getElementById(id).style.display='none'; }
+
+/* ===========================
+   Cargas A (Extrusión) y B (Sorting)
+   =========================== */
+async function cargarA_Extrusion(){
+  setLoading(true,'Cargando...');
+  try{
+    await cargarLineas();
+    const fechaInicio="2025-01-01";
+    const fechaFin=new Date().toISOString().slice(0,10);
+
+    const [extrude,tmpin,mapaAleacionTemper]=await Promise.all([
+      consultarDepartamento(fechaInicio,fechaFin,"EXTRUDE"),
+      consultarDepartamento(fechaInicio,fechaFin,"TMP-IN"),
+      obtenerAleacionTemper()
+    ]);
+
+    const extrudeMap={};
+    extrude.forEach(e=>{
+      const clave=`${e.sonum}-${e.soitemnum}`;
+      if(!extrudeMap[clave]){
+        extrudeMap[clave]={piezasExtrude:0,kgExtrude:0,ultimaFecha:null,ultimaMachine:"-",
+          Part:e.Part||"-",descrip:e.descrip||"-",long:e.long||"-",cliente:e.cliente||"-",prio:e.prio||"-"};
+      }
+      const pc=Number(e.PcProd)||0, kg=Number(e.KgProd)||0;
+      extrudeMap[clave].piezasExtrude+=pc; extrudeMap[clave].kgExtrude+=kg;
+      if(pc>0){
+        if(!extrudeMap[clave].ultimaFecha || new Date(e.dt)>new Date(extrudeMap[clave].ultimaFecha)){
+          extrudeMap[clave].ultimaFecha=e.dt;
+        }
+        extrudeMap[clave].ultimaMachine=(e.MachineName||"-").trim();
+        extrudeMap[clave].Part=e.Part||"-"; extrudeMap[clave].descrip=e.descrip||"-";
+        extrudeMap[clave].long=e.long||"-"; extrudeMap[clave].cliente=e.cliente||"-"; extrudeMap[clave].prio=e.prio||"-";
+      }
+    });
+
+    const tmpMap={};
+    tmpin.forEach(i=>{
+      const clave=`${i.sonum}-${i.soitemnum}`;
+      if(!tmpMap[clave]) tmpMap[clave]={piezas:0,kg:0};
+      tmpMap[clave].piezas+=(Number(i.PcProd)||0);
+      tmpMap[clave].kg+=(Number(i.KgProd)||0);
+    });
+
+    const pendientes=[], novedades=[];
+    const limiteNovedades=new Date("2025-04-01");
+
+    Object.entries(extrudeMap).forEach(([clave,e])=>{
+      const piezasTmp=tmpMap[clave]?.piezas||0;
+      const kgTmp=tmpMap[clave]?.kg||0;
+      const piezasPend=e.piezasExtrude - piezasTmp;
+      const kgPend=e.kgExtrude - kgTmp;
+      const planta=getPlanta(e.ultimaMachine);
+      const linea=lineasMap[clave]||"-";
+
+      if(piezasPend>0){
+        pendientes.push({
+          clave, aleacion:((mapaAleacionTemper[clave]||{}).aleacion)||"",
+          temper:((mapaAleacionTemper[clave]||{}).temper)||"",
+          piezasPend, kgPend, ultimaMachine:e.ultimaMachine, ultimaFecha:formatearFecha(e.ultimaFecha),
+          planta, Part:e.Part, linea, descrip:e.descrip, long:e.long, cliente:e.cliente, prio:e.prio
+        });
+      }else if(piezasTmp>e.piezasExtrude && new Date(e.ultimaFecha)>=limiteNovedades){
+        novedades.push({
+          clave, aleacion:((mapaAleacionTemper[clave]||{}).aleacion)||"",
+          temper:((mapaAleacionTemper[clave]||{}).temper)||"",
+          piezasTmp, kgTmp, piezasExtrude:e.piezasExtrude, kgExtrude:e.kgExtrude,
+          diffPiezas:piezasTmp - e.piezasExtrude, diffKg: kgTmp - e.kgExtrude,
+          ultimaMachine:e.ultimaMachine, ultimaFecha:formatearFecha(e.ultimaFecha),
+          planta, Part:e.Part, linea, descrip:e.descrip, long:e.long, cliente:e.cliente, prio:e.prio
+        });
+      }
+    });
+
+    datosPendientes=pendientes; datosNovedades=novedades; cacheAOk=true;
+
+    // Render tabla A
+    renderTablaA();
+    // Novedades
+    updateNovedadesButton('btnNovedadesExtrusion', datosNovedades.length);
+    if(datosNovedades.length) renderTablaNovedades(); else clearTable('tablaNovedades');
+
+        // Actualiza dashboard si estás ahí
+    if(currentView==='dashboard') renderDashboard();
+
+    // ⬅️ Aquí sí
+    setUltimaActualizacion();
+
+  }catch(e){
+    alert('Error cargando Extrusión: '+(e.message||e));
+  }finally{
+    setLoading(false);
+  }
+}
+
+
+async function cargarB_Sorting(){
+  setLoading(true,'Cargando...');
+  try{
+    const fi=document.getElementById('fechaInicial')?.value || '2025-01-01';
+    const ff=document.getElementById('fechaFinal')?.value || new Date().toISOString().slice(0,10);
+
+    const [tmpinData,temperData]=await Promise.all([
+      consultarDepartamento(fi,ff,"TMP-IN"),
+      consultarDepartamento(fi,ff,"TEMPER")
+    ]);
+
+    const temperMap={};
+    for(const t of temperData){
+      const clave=`${t.sonum}-${t.soitemnum}`;
+      const prod=Number(t.PcProd)||0; const scr=Number(t.PcScr)||0;
+      temperMap[clave]=(temperMap[clave]||0)+prod+scr;
+    }
+
+    const tmpinMap={};
+    const ahora=ahoraColombia();
+    for(const t of tmpinData){
+      const clave=`${t.sonum}-${t.soitemnum}`;
+      const piezas=Number(t.PcProd)||0;
+      const dt3=calcularDt3(t.dt,t.dt2,t.shift);
+      const horasTrans=(ahora - dt3)/(1000*60*60);
+
+      if(!tmpinMap[clave]){
+        tmpinMap[clave]={ tmpin:0, Machine:t.MachineName?.trim()||"-", Part:t.Part||"-", Cliente:(t.cliente||"-").toString().trim(),
+          Descripcion:t.descrip||"-", Turno:(t.shift??"").toString(), dt3Raw:dt3, HorasTrans:horasTrans };
+      }
+      tmpinMap[clave].tmpin+=piezas;
+
+      if(dt3>tmpinMap[clave].dt3Raw){
+        tmpinMap[clave].Machine=t.MachineName?.trim()||"-";
+        tmpinMap[clave].Part=t.Part||"-";
+        tmpinMap[clave].Cliente=(t.cliente||"-").toString().trim();
+        tmpinMap[clave].Descripcion=t.descrip||"-";
+        tmpinMap[clave].Turno=(t.shift??"").toString();
+        tmpinMap[clave].dt3Raw=dt3;
+        tmpinMap[clave].HorasTrans=(ahora - dt3)/(1000*60*60);
+      }
+    }
+
+    const fechaMinMostrar=new Date("2025-04-10T00:00:00");
+    mayoresTMP=[]; mayoresTemper=[];
+    for(const clave in tmpinMap){
+      const totalTMP=tmpinMap[clave].tmpin||0;
+      const totalTemper=temperMap[clave]||0;
+      const pendiente=totalTMP-totalTemper;
+      if(tmpinMap[clave].dt3Raw<fechaMinMostrar) continue;
+      if(tmpinMap[clave].HorasTrans<15) continue;
+
+      if(pendiente>0){
+        mayoresTMP.push({ soitem:clave, tmpin:totalTMP, temper:totalTemper, pendiente,
+          ...tmpinMap[clave], FechaDT3:formatearFechaLocalColombia(tmpinMap[clave].dt3Raw),
+          HorasTrans:(tmpinMap[clave].HorasTrans).toFixed(1) });
+      }else if(pendiente<0){
+        mayoresTemper.push({ soitem:clave, tmpin:totalTMP, temper:totalTemper, diferencia:Math.abs(pendiente),
+          ...tmpinMap[clave], FechaDT3:formatearFechaLocalColombia(tmpinMap[clave].dt3Raw),
+          HorasTrans:(tmpinMap[clave].HorasTrans).toFixed(1) });
+      }
+    }
+
+    cacheBOk=true;
+
+    // Render tabla B
+    renderTablaB();
+
+    // Novedades sorting
+    updateNovedadesButton('btnNovedadesSorting', mayoresTemper.length);
+    if(mayoresTemper.length) renderTablaTemperMayor(); else clearTable('tablaTemperMayor');
+
+    // Actualiza dashboard si estás ahí
+    if(currentView==='dashboard') renderDashboard();
+
+// ⬅️ NUEVO
+    setUltimaActualizacion();
+
+  }catch(e){
+    alert('Error cargando Sorting: '+(e.message||e));
+  }finally{
+    setLoading(false);
+  }
+}
+
+/* ===========================
+   Botón Actualizar
+   =========================== */
+function handleActualizar(){
+  if(currentView==='dashboard'){
+    const tasks=[];
+
+    if(!cacheAOk) tasks.push(cargarA_Extrusion());
+    if(!cacheBOk) tasks.push(cargarB_Sorting());
+    if(!tasks.length) renderDashboard();
+  }
+  else if(currentView==='por-templar'){
+    cargarA_Extrusion();
+  }
+  else if(currentView==='por-entregar'){
+    cargarB_Sorting();
+  }
+  else if(currentView==='planilla-envejecimiento'){
+    generarPlanilla();
+  }
+  else if(currentView==='en-temple'){
+    generarResumenEnTemple(); // ✅ aquí llamas tu nuevo resumen
+  }
+}
+
+/* ===========================
+   Exportar Planilla
+   =========================== */
+function exportarPlanillaExcel(){
+  let tabla = document.getElementById("planillaContainer");
+  if(!tabla){
+    alert("⚠ No hay planilla para exportar");
+    return;
+  }
+  let wb = XLSX.utils.table_to_book(tabla.querySelector("table"), {sheet:"Planilla"});
+  XLSX.writeFile(wb, `planilla_envejecimiento.xlsx`);
+}
+
+function exportarPlanillaPDF(){
+  const tabla = document.getElementById("planillaContainer");
+  if(!tabla){
+    alert("⚠ No hay planilla para exportar");
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  html2canvas(tabla).then(canvas=>{
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF('l','pt','legal'); // horizontal oficio
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    pdf.addImage(imgData, 'PNG', 10, 10, pdfWidth-20, pdfHeight-20);
+    pdf.save("planilla_envejecimiento.pdf");
+  });
+}
+
+
+/* ===========================
+   Export visible
+   =========================== */
+function exportVisibleTable(){
+  const tableId=getVisibleTableId();
+  if(!tableId){ alert('No hay tabla visible para exportar.'); return; }
+  exportTable(tableId);
+}
+
+/* ===========================
+   Ordenamiento de columnas
+   =========================== */
+function attachSortHandlers(tableId){
+  const table = document.getElementById(tableId);
+  if(!table) return;
+
+  const headers = table.querySelectorAll("th.sortable");
+  headers.forEach((th, index) => {
+    th.onclick = () => {
+      const isAsc = !th.classList.contains("asc");
+      headers.forEach(h => h.classList.remove("asc","desc"));
+      th.classList.add(isAsc ? "asc" : "desc");
+
+      const rows = Array.from(table.querySelector("tbody").rows);
+      rows.sort((a, b) => {
+        const valA = a.cells[index]?.innerText.trim() || "";
+        const valB = b.cells[index]?.innerText.trim() || "";
+
+        if(!isNaN(valA) && !isNaN(valB)){
+          return isAsc ? valA - valB : valB - valA;
+        }
+        return isAsc
+          ? valA.localeCompare(valB, "es", {numeric:true})
+          : valB.localeCompare(valA, "es", {numeric:true});
+      });
+
+      rows.forEach(r => table.querySelector("tbody").appendChild(r));
+    };
+  });
+}
+
+// Suponiendo que ya estás en tu archivo `index.html` de tu ERP con el menú de Reportes → En Temple creado
+// y que la función `generarResumenEnTemple()` ya existe y agrupa por horno y descripción correctamente,
+// aquí está la versión actualizada que renderiza las tarjetas tipo "cards" (estilo 'Dentro de Hornos').
+
+function convertirHoraAMPMa24(horaAMPM) {
+  if (!horaAMPM) return "00:00";
+  const [time, modifier] = horaAMPM.trim().split(' ');
+  let [hours, minutes] = time.split(':');
+  if (modifier === 'PM' && hours !== '12') hours = String(parseInt(hours, 10) + 12);
+  if (modifier === 'AM' && hours === '12') hours = '00';
+  return `${hours.padStart(2, '0')}:${minutes}`;
+}
+
+
+
+
+function generarResumenEnTemple() {
+  const fecha = document.getElementById("fechaEnTemple").value;
+  const turno = document.getElementById("turnoEnTemple").value;
+
+  if (!fecha || !turno) {
+    alert("Selecciona fecha y turno");
+    return;
+  }
+
+  fetch("https://optima.tecnoglass.net/api/alutions_production/reporte-extruccion", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      Fecha_inicial: fecha,
+      Fecha_final: fecha,
+      departamento: 3,
+      turno: turno
+    })
+  })
+    .then(response => response.json())
+    .then(result => {
+      const bloques = result?.data || [];
+      const datosTMPIN = bloques.find(b => Array.isArray(b?.TMPIN))?.TMPIN || [];
+      const datosFiltrados = datosTMPIN.filter(item => item.shift?.toString() === turno);
+
+      if (datosFiltrados.length === 0) {
+        document.getElementById("tablaEnTempleContainer").innerHTML = "<i>No hay registros TMPIN para esa fecha y turno</i>";
+        return;
+      }
+
+      const agrupado = {};
+      datosFiltrados.forEach(item => {
+        const horno = item.MachineName?.trim() || "SIN HORNO";
+        const desc = item.descrip?.trim() || "Sin descripción";
+        const kg = parseFloat(item.kg || 0);
+        const hora = new Date(item.dt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+        if (!agrupado[horno]) agrupado[horno] = { productos: {}, hora };
+        if (!agrupado[horno].productos[desc]) agrupado[horno].productos[desc] = 0;
+        agrupado[horno].productos[desc] += kg;
+      });
+
+      let html = `<div class="dashboard-grid">`;
+
+      Object.entries(agrupado).forEach(([horno, data]) => {
+        let subtotal = 0;
+        let productosHTML = "";
+
+        Object.entries(data.productos).forEach(([desc, kg]) => {
+          subtotal += kg;
+          productosHTML += `<div class="linea-gris"><b>${desc}</b>: ${kg.toFixed(0)} Kg</div>`;
+        });
+
+// Calcular total general
+const totalGeneral = Object.values(agrupado).reduce((sum, horno) => {
+  return sum + Object.values(horno.productos).reduce((s, k) => s + k, 0);
+}, 0);
+
+// Título con total general
+const tituloFinal = `
+  <div class="titulo-en-temple">
+    <div>🔥 Dentro de Hornos ${fecha} - Turno ${turno}</div>
+    <span class="total-general">Total General: ${totalGeneral.toFixed(0)} Kg</span>
+  </div>
+`;
+
+document.getElementById("tituloEnTemple").innerHTML = tituloFinal;
+
+
+        html += `
+          <div class="card-horno">
+            <h3>🔥 ${horno}</h3>
+            <label><b>Hora:</b> 
+            <input type="text" class="hora-ampm-input" value="${data.hora}" />
+            </label><br>
+            ${productosHTML}
+            <div class="total"><b>Total:</b> ${subtotal.toFixed(0)} Kg</div>
+            <div class="barra-total"><span style="width:100%"></span></div>
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+
+      html += `
+        <div style="text-align:center;margin-top:12px;">
+          <button onclick="descargarImagenEnTemple()" class="btn btn-accent">📸 Descargar</button>
+          <button onclick="compartirWhatsAppEnTemple()" class="btn">📲 Compartir WhatsApp</button>
+          <button onclick="compartirCorreoEnTemple()" class="btn">✉️ Compartir Correo</button>
+        </div>`;
+
+      document.getElementById("tablaEnTempleContainer").innerHTML = html;
+    });
+}
+let imgEnTemple = "";
+
+async function descargarImagenEnTemple() {
+  const filtros = document.querySelector(".barra-filtros");
+  const botones = document.querySelectorAll(".btn, button");
+  const contenedor = document.querySelector("#enTempleSection .printable");
+
+  // Ocultar filtros/botones
+  if (filtros) filtros.style.display = "none";
+  botones.forEach(btn => btn.style.display = "none");
+
+  const originalOverflow = document.body.style.overflow;
+  document.body.style.overflow = "visible";
+
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const canvas = await html2canvas(contenedor, {
+    backgroundColor: "#fff",
+    scale: 2,
+    useCORS: true
+  });
+
+  // Restaurar
+  if (filtros) filtros.style.display = "";
+  botones.forEach(btn => btn.style.display = "");
+  document.body.style.overflow = originalOverflow;
+
+  // Descargar imagen
+  const link = document.createElement("a");
+  link.download = "reporte_en_temple.png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+
+  // Copiar al portapapeles
+  if (navigator.clipboard && window.ClipboardItem) {
+    canvas.toBlob(async (blob) => {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob })
+        ]);
+        alert("✅ Imagen copiada.\nAhora puedes pegarla con Ctrl+V en el correo.");
+      } catch (err) {
+        console.error("Error copiando al portapapeles", err);
+      }
+    });
+  }
+}
+
+function compartirCorreoEnTemple() {
+  const fecha = document.getElementById("fechaEnTemple").value;
+  const turno = document.getElementById("turnoEnTemple").value;
+
+  if (!fecha || !turno) {
+    alert("Selecciona primero la fecha y el turno del reporte");
+    return;
+  }
+
+  const asunto = `Reporte Dentro de Hornos - ${fecha} - Turno ${turno}`;
+  const destinatarios = [
+    "juan.marino@tecnoglass.com",
+    "gilenis.torres@tecnoglass.com",
+    "carolina.salazar@tecnoglass.com",
+    "gary.maldonado@tecnoglass.com",
+    "miguel.redondo@tecnoglass.com",
+    "ricardo.polo@tecnoglass.com",
+    "yajaira.martelo@tecnoglass.com",
+    "angie.garizabalo@tecnoglass.com",
+    "hojer.garcia@tecnoglass.com",
+    "miryan.farfan@tecnoglass.com",
+    "alexis.ortiz@tecnoglass.com",
+    "karen.gonzalez@tecnoglass.com",
+    "auditores.calidad@tecnoglass.com",
+    "paola.sanchez@tecnoglass.com",
+    "ceidy.hernandez@tecnoglass.com",
+    "zully.lopez@tecnoglass.com",
+    "dorlys.escalante@tecnoglass.com",
+    "digitadores.pintura@tecnoglass.com",
+    "practicante.calidad@tecnoglass.com",
+    "geidys.polo@tecnoglass.com",
+    "vannesa.canas@tecnoglass.com",
+    "analista.inventario@tecnoglass.com",
+    "supervisores.inventario@tecnoglass.com",
+    "edwin.cardenas@tecnoglass.com",
+    "giuseppe.riveira@tecnoglass.com",
+    "jhon.caraballo@tecnoglass.com",
+    "yaritza.escobar@tecnoglass.com",
+    "solucionesnc.alutions@tecnoglass.com",
+    "millfinish@tecnoglass.com",
+    "katherine.navarro@tecnoglass.com",
+    "jose.roa@tecnoglass.com",
+    "kevin.otalvarez@tecnoglass.com",
+    "pintura.horizontal1@energiasolarsa.com",
+    "insulbar@tecnoglass.com",
+    "luis.ariza@tecnoglass.com",
+    "danilo.delaiglesia@tecnoglass.com",
+    "maria.ramirez@tecnoglass.com",
+    "orlando.mancilla@tecnoglass.com",
+    "mario.herrera@tecnoglass.com",
+    "analista.ppolvo@tecnoglass.com",
+    "vivian.ariza@tecnoglass.com",
+    "felix.torresilla@tecnoglass.com",
+    "laura.cajar@tecnoglass.com",
+    "richard.morales@tecnoglass.com",
+    "jhoony.rodriguez@tecnoglass.com",
+    "sergio.ruizc@tecnoglass.com"
+  ];
+
+  const to = destinatarios.join(";");
+
+  const body = `
+  Hola,%0D%0A%0D%0A
+  Adjunto el reporte Dentro de Hornos correspondiente a la fecha ${fecha} - Turno ${turno}.%0D%0A%0D%0A
+  Saludos.`;
+
+  // Este método abre Outlook con campos precargados (requiere que el archivo esté ya descargado manualmente)
+  const mailtoLink = `mailto:${to}?subject=${encodeURIComponent(asunto)}&body=${body}`;
+
+  // Abrir el Outlook de escritorio
+  window.location.href = mailtoLink;
+}
+
+function compartirWhatsAppEnTemple() {
+  const fecha = document.getElementById("fechaEnTemple").value;
+  const turno = document.getElementById("turnoEnTemple").value;
+
+  const texto = `🔥 Resumen En Temple\n📅 Fecha: ${fecha}\n🕐 Turno: ${turno}\n\n`;
+
+  // Si es celular
+  const esCelular = /Android|iPhone/i.test(navigator.userAgent);
+  const url = esCelular
+    ? `whatsapp://send?text=${encodeURIComponent(texto)}`
+    : `https://web.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+
+  window.open(url, "_blank");
+}
+
+/* ===========================
+   Init
+   =========================== */
+document.addEventListener('DOMContentLoaded',()=>{ showMenu('dashboard'); });
+</script>
+</body>
+</html>
