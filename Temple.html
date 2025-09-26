@@ -333,14 +333,19 @@
   border-bottom: 1px solid #003366;
 }
 
-
+tr.destacado {
+  background-color: #ffeeba !important;
+  font-weight: bold;
+  color: #000;
+}
+	
 </style>
 </head>
 <body>
 
 <!-- Sidebar -->
 <div class="sidebar" id="sidebar">
-  <h2>ERP</h2>
+  <h2>TEMPLE</h2>
   <ul>
     <li class="active" data-menu="dashboard" onclick="showMenu('dashboard')"><i>📊</i><span>Dashboard</span></li>
 
@@ -369,7 +374,9 @@
     <div style="display:flex; gap:8px; align-items:center;">
       <button class="btn" onclick="toggleSidebar()">☰</button>
       <button class="btn btn-accent" id="btnActualizar" onclick="handleActualizar()">Actualizar</button>
-
+      <button id="btnQuitarFiltros" style="display: none;">Eliminar filtros</button>
+      <button id="btnQuitarResaltado" style="display: none;">Eliminar resaltado</button>
+		
       <!-- Botones de novedades (badges) -->
       <button id="btnNovedadesExtrusion" class="btn btn-badge hidden" onclick="openModal('modalExtrusion')">Novedades Extrusión</button>
       <button id="btnNovedadesSorting" class="btn btn-badge hidden" onclick="openModal('modalSorting')">Novedades Sorting</button>
@@ -826,13 +833,25 @@ function setUltimaActualizacion() {
 /* ===========================
    Conexiones Reales
    =========================== */
-async function cargarLineas(){
-  const url="https://api.allorigins.win/raw?url="+encodeURIComponent("https://docs.google.com/spreadsheets/d/e/2PACX-1vRS6VAInZZmrWB1tVnoBZQQnMWuBkfKT3EKCnfDdTkObIQDAZfFFZnk6ga4afkfA-tvEady3I5ZXE07/pub?output=csv");
-  const resp=await fetch(url); const csvText=await resp.text();
-  const rows=csvText.split(/\r?\n/).map(r=>r.split(",")); const headers=rows.shift().map(h=>h.trim().toUpperCase());
-  const claveIndex=headers.findIndex(h=>'SOITEM'===h); const lineaIndex=headers.findIndex(h=>'LINEA'===h);
-  lineasMap={}; rows.forEach(row=>{const clave=(row[claveIndex]||"").trim();const linea=(row[lineaIndex]||"").trim()||"-"; if(clave) lineasMap[clave]=linea;});
+async function cargarLineas() {
+  const url = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent("https://docs.google.com/spreadsheets/d/e/2PACX-1vRS6VAInZZmrWB1tVnoBZQQnMWuBkfKT3EKCnfDdTkObIQDAZfFFZnk6ga4afkfA-tvEady3I5ZXE07/pub?output=csv");
+  const resp = await fetch(url);
+  const csvText = await resp.text();
+
+  const rows = csvText.split(/\r?\n/).map(r => r.split(","));
+  const headers = rows.shift().map(h => h.trim().toUpperCase());
+
+  const claveIndex = headers.findIndex(h => 'SOITEM' === h);
+  const lineaIndex = headers.findIndex(h => 'LINEA' === h);
+
+  lineasMap = {};
+  rows.forEach(row => {
+    const clave = (row[claveIndex] || "").trim();
+    const linea = (row[lineaIndex] || "").trim() || "-";
+    if (clave) lineasMap[clave] = linea;
+  });
 }
+
 async function consultarDepartamento(fechaInicio,fechaFin,departamento){
   const payload={Fecha_inicial:fechaInicio,Fecha_final:fechaFin,Departamento:departamento};
   const resp=await fetch("https://optima.tecnoglass.net/api/alutions_production/reports-producion/Detalle-produccion",{
@@ -1898,6 +1917,104 @@ function compartirWhatsAppEnTemple() {
   window.open(url, "_blank");
 }
 
+let ultimaFilaSeleccionada = null;
+
+document.addEventListener("click", function (e) {
+  const fila = e.target.closest("tr");
+  if (!fila || fila.parentElement.tagName !== "TBODY") return;
+
+  const filas = Array.from(fila.parentElement.children);
+
+  // Shift → selecciona rango
+  if (e.shiftKey && ultimaFilaSeleccionada) {
+    const start = filas.indexOf(ultimaFilaSeleccionada);
+    const end = filas.indexOf(fila);
+    const [min, max] = [Math.min(start, end), Math.max(start, end)];
+    for (let i = min; i <= max; i++) {
+      filas[i].classList.add("destacado");
+    }
+  }
+  // Ctrl o clic normal → alterna una fila sin borrar otras
+  else {
+    fila.classList.toggle("destacado");
+  }
+
+  ultimaFilaSeleccionada = fila;
+});
+
+// Mostrar botón si hay filas resaltadas
+function actualizarBotonQuitarResaltado() {
+  const hayResaltadas = document.querySelectorAll("tr.destacado").length > 0;
+  document.getElementById("btnQuitarResaltado").style.display = hayResaltadas ? "inline-block" : "none";
+}
+
+// Mostrar botón si hay filtros activos
+function actualizarBotonQuitarFiltros() {
+  const tableId = getVisibleTableId();
+  if (!tableId) return;
+
+  let hayFiltro = false;
+  document.querySelectorAll(`#${tableId} thead .filter-content`).forEach(fc => {
+    fc.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      if (!cb.checked) hayFiltro = true;
+    });
+  });
+
+  const searchBox = document.getElementById("globalSearch");
+  if (searchBox && searchBox.value.trim() !== "") hayFiltro = true;
+
+  document.getElementById("btnQuitarFiltros").style.display = hayFiltro ? "inline-block" : "none";
+}
+
+// Escuchar clic en cualquier checkbox de filtros
+document.addEventListener("change", (e) => {
+  if (e.target.closest(".filter-options")) {
+    setTimeout(actualizarBotonQuitarFiltros, 10);
+  }
+});
+
+// Escuchar escritura en búsqueda global
+document.getElementById("globalSearch")?.addEventListener("input", () => {
+  actualizarBotonQuitarFiltros();
+});
+
+// Escuchar clics para actualizar botón de resaltado
+document.addEventListener("click", (e) => {
+  if (e.target.closest("tr")?.parentElement?.tagName === "TBODY") {
+    setTimeout(actualizarBotonQuitarResaltado, 10);
+  }
+});
+
+// Botón quitar resaltado
+document.getElementById("btnQuitarResaltado").addEventListener("click", () => {
+  document.querySelectorAll("tr.destacado").forEach(tr => tr.classList.remove("destacado"));
+  actualizarBotonQuitarResaltado();
+});
+
+// Botón quitar filtros
+document.getElementById("btnQuitarFiltros").addEventListener("click", () => {
+  const tableId = getVisibleTableId();
+  if (!tableId) return;
+
+  // Reset búsqueda global
+  const globalSearch = document.getElementById("globalSearch");
+  if (globalSearch) globalSearch.value = "";
+
+  // Marcar todos los checkboxes
+  document.querySelectorAll(`#${tableId} thead .filter-content`).forEach(fc => {
+    fc.querySelectorAll('.filter-options input[type="checkbox"]').forEach(cb => cb.checked = true);
+  });
+
+  // Aplicar filtros vacíos
+  document.querySelectorAll(`#${tableId} thead .filter-content`).forEach(fc => {
+    const col = Number(fc.dataset.col);
+    filterApply(tableId, col);
+  });
+
+  applyGlobalSearch("");
+  actualizarBotonQuitarFiltros();
+});
+
 /* ===========================
    Init
    =========================== */
@@ -1905,4 +2022,5 @@ document.addEventListener('DOMContentLoaded',()=>{ showMenu('dashboard'); });
 </script>
 </body>
 </html>
+
 
