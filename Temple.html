@@ -1074,39 +1074,52 @@ async function generarPlanilla(){
       return;
     }
 
-    // --- Rellenar la tabla ---
-    const tbody = document.getElementById("tbodyPlanilla");
-    tbody.innerHTML = "";
+    // --- Rellenar la tabla (ordenada por CANASTA) ---
+const tbody = document.getElementById("tbodyPlanilla");
+tbody.innerHTML = "";
 
-    tmpinFiltrado.forEach((r, idx) => {
-      const soitem = pick(r, "soitemnum","Soitemnum","Soitem","soitem");
-      const sonum  = pick(r, "sonum","Sonum","so","So");
-      const clave  = `${soitem}-${sonum}`;   // clave para cruce con Sierra
+// 🔹 Ordenar primero por el campo Rack (Canasta)
+const tmpinOrdenado = tmpinFiltrado.slice().sort((a, b) => {
+  const ra = (a.Rack || a.rack || "").toString().trim();
+  const rb = (b.Rack || b.rack || "").toString().trim();
+  // Orden numérico si ambos son números, si no alfabético
+  const na = parseFloat(ra);
+  const nb = parseFloat(rb);
+  if (!isNaN(na) && !isNaN(nb)) return na - nb;
+  return ra.localeCompare(rb, "es", { numeric: true, sensitivity: "base" });
+});
 
-      const matchS = sierraMap.get(clave) || {};
-      const { aleacion, temple } = splitAllot(pick(r, "allot","Allot"));
+// 🔹 Cargar filas ordenadas
+tmpinOrdenado.forEach((r, idx) => {
+  const soitem = pick(r, "soitemnum","Soitemnum","Soitem","soitem");
+  const sonum  = pick(r, "sonum","Sonum","so","So");
+  const clave  = `${soitem}-${sonum}`;   // clave para cruce con Sierra
 
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${idx+1}</td>
-        <td>${pick(r,"Rack","rack")}</td>
-        <td>${sonum}-${soitem}</td>
-        <td>${pick(r,"dienum","Part","Referencia","referencia")}</td>
-        <td>${pick(r,"pc","Pc","PcProd","cantidad")}</td>
-        <td>${matchS.long || ""}</td>
-        <td>${pick(r,"kg","Kg","KgProd")}</td>
-        <td>${pick(r,"cliente","Cliente")}</td>
-        <td>${pick(r,"descrip","Descripcion","descripcion")}</td>
-        <td>${matchS.prensa || ""}</td>
-        <td></td> <!-- WT vacío -->
-        <td>${temple}</td>
-        <td>${pick(r,"prio","Prio")}</td>
-        <td>${aleacion}</td>
-        <td></td> <!-- Reproceso vacío -->
-        <td></td> <!-- Firma vacío -->
-      `;
-      tbody.appendChild(tr);
-    });
+  const matchS = sierraMap.get(clave) || {};
+  const { aleacion, temple } = splitAllot(pick(r, "allot","Allot"));
+
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${idx+1}</td>
+    <td>${pick(r,"Rack","rack")}</td>
+    <td>${sonum}-${soitem}</td>
+    <td>${pick(r,"dienum","Part","Referencia","referencia")}</td>
+    <td>${pick(r,"pc","Pc","PcProd","cantidad")}</td>
+    <td>${matchS.long || ""}</td>
+    <td>${pick(r,"kg","Kg","KgProd")}</td>
+    <td>${pick(r,"cliente","Cliente")}</td>
+    <td>${pick(r,"descrip","Descripcion","descripcion")}</td>
+    <td>${matchS.prensa || ""}</td>
+    <td></td>
+    <td>${temple}</td>
+    <td>${pick(r,"prio","Prio")}</td>
+    <td>${aleacion}</td>
+    <td></td>
+    <td></td>
+  `;
+  tbody.appendChild(tr);
+});
+
 
     // Encabezados
     document.getElementById("fechaIngreso").textContent = fecha;
@@ -2020,6 +2033,7 @@ document.addEventListener('DOMContentLoaded',()=>{ showMenu('dashboard'); });
 </script>
 </body>
 </html>
+
 
 
 
