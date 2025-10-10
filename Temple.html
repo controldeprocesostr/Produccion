@@ -1407,7 +1407,7 @@ function closeModal(id){ document.getElementById(id).style.display='none'; }
    Cargas A (Extrusión) y B (Sorting)
    =========================== */
 async function cargarA_Extrusion(){
-  setLoading(true,'Cargando...');
+  setLoading(true,'Cargando....');
   try{
     await cargarLineas();
     const fechaInicio="2025-01-01";
@@ -1419,75 +1419,185 @@ async function cargarA_Extrusion(){
       obtenerAleacionTemper()
     ]);
 
-    const extrudeMap={};
-    extrude.forEach(e=>{
-      const clave=`${e.sonum}-${e.soitemnum}`;
-      if(!extrudeMap[clave]){
-        extrudeMap[clave]={piezasExtrude:0,kgExtrude:0,ultimaFecha:null,ultimaMachine:"-",
-          Part:e.Part||"-",descrip:e.descrip||"-",long:e.long||"-",cliente:e.cliente||"-",prio:e.prio||"-"};
-      }
-      const pc=Number(e.PcProd)||0, kg=Number(e.KgProd)||0;
-      extrudeMap[clave].piezasExtrude+=pc; extrudeMap[clave].kgExtrude+=kg;
-      if(pc>0){
-        if(!extrudeMap[clave].ultimaFecha || new Date(e.dt)>new Date(extrudeMap[clave].ultimaFecha)){
-          extrudeMap[clave].ultimaFecha=e.dt;
-        }
-        extrudeMap[clave].ultimaMachine=(e.MachineName||"-").trim();
-        extrudeMap[clave].Part=e.Part||"-"; extrudeMap[clave].descrip=e.descrip||"-";
-        extrudeMap[clave].long=e.long||"-"; extrudeMap[clave].cliente=e.cliente||"-"; extrudeMap[clave].prio=e.prio||"-";
-      }
-    });
+    // =====================================================
+    //  MAPA EXTRUSIÓN
+    // =====================================================
+    const extrudeMap = {};
+extrude.forEach(e => {
+  const clave = `${e.sonum}-${e.soitemnum}`;
+  if (!extrudeMap[clave]) {
+    extrudeMap[clave] = {
+      piezasExtrude: 0,
+      kgExtrude: 0,
+      ultimaFecha: null,
+      ultimaMachine: "-",
+      Part: e.Part || "-",
+      descrip: e.descrip || "-",
+      long: e.long || "-",
+      cliente: e.cliente || "-",
+      prio: e.prio || "-"
+    };
+  }
 
+  const pc = Number(e.PcProd) || 0;
+  const kg = Number(e.KgProd) || 0;
+  extrudeMap[clave].piezasExtrude += pc;
+  extrudeMap[clave].kgExtrude += kg;
+
+  // 🔹 Siempre guardar máquina y fecha más reciente, incluso si PcProd = 0
+  if (!extrudeMap[clave].ultimaFecha || new Date(e.dt) > new Date(extrudeMap[clave].ultimaFecha)) {
+    extrudeMap[clave].ultimaFecha = e.dt;
+    extrudeMap[clave].ultimaMachine = (e.MachineName || "-").trim();
+  }
+
+  // 🔹 Mantener los demás datos descriptivos actualizados
+  extrudeMap[clave].Part = e.Part || "-";
+  extrudeMap[clave].descrip = e.descrip || "-";
+  extrudeMap[clave].long = e.long || "-";
+  extrudeMap[clave].cliente = e.cliente || "-";
+  extrudeMap[clave].prio = e.prio || "-";
+});
+
+
+    // =====================================================
+    //  MAPA TMP-IN (incluye fecha dt para filtrar)
+    // =====================================================
     const tmpMap={};
-    tmpin.forEach(i=>{
-      const clave=`${i.sonum}-${i.soitemnum}`;
-      if(!tmpMap[clave]) tmpMap[clave]={piezas:0,kg:0};
-      tmpMap[clave].piezas+=(Number(i.PcProd)||0);
-      tmpMap[clave].kg+=(Number(i.KgProd)||0);
-    });
+tmpin.forEach(i=>{
+  const clave=`${i.sonum}-${i.soitemnum}`;
+  if(!tmpMap[clave]){
+    tmpMap[clave]={
+      piezas:0,
+      kg:0,
+      dt:i.dt||new Date(),
+      Part:i.Part||"-",
+      descrip:i.descrip||"-",
+      cliente:i.cliente||"-",
+      prio:i.prio||"-",
+      long:i.long||"-",
+      MachineName:i.MachineName||"-"
+    };
+  }
+  tmpMap[clave].piezas+=(Number(i.PcProd)||0);
+  tmpMap[clave].kg+=(Number(i.KgProd)||0);
 
-    const pendientes=[], novedades=[];
-    const limiteNovedades=new Date("2025-04-01");
+  // actualizar fecha si encuentra una más reciente
+  if(new Date(i.dt)>new Date(tmpMap[clave].dt)){
+    tmpMap[clave].dt=i.dt;
+  }
+});
 
-    Object.entries(extrudeMap).forEach(([clave,e])=>{
-      const piezasTmp=tmpMap[clave]?.piezas||0;
-      const kgTmp=tmpMap[clave]?.kg||0;
-      const piezasPend=e.piezasExtrude - piezasTmp;
-      const kgPend=e.kgExtrude - kgTmp;
-      const planta=getPlanta(e.ultimaMachine);
-      const linea=lineasMap[clave]||"-";
+    // =====================================================
+    //  COMPARACIÓN Y FILTRO
+    // =====================================================
+    const pendientes = [];
+    const novedades = [];
+    const limiteNovedades = new Date("2025-04-01"); // Solo mostrar desde abril 2025
 
-      if(piezasPend>0){
+    // 🔹 Comparar claves existentes en Extrusión
+    Object.entries(extrudeMap).forEach(([clave, e]) => {
+      const piezasTmp = tmpMap[clave]?.piezas || 0;
+      const kgTmp = tmpMap[clave]?.kg || 0;
+      const piezasPend = e.piezasExtrude - piezasTmp;
+      const kgPend = e.kgExtrude - kgTmp;
+      const planta = getPlanta(e.ultimaMachine);
+      const linea = lineasMap[clave] || "-";
+      const fechaExtrude = new Date(e.ultimaFecha);
+
+      // Mostrar solo desde 2025-04-01
+      if (fechaExtrude < limiteNovedades) return;
+
+      if (piezasPend > 0) {
         pendientes.push({
-          clave, aleacion:((mapaAleacionTemper[clave]||{}).aleacion)||"",
-          temper:((mapaAleacionTemper[clave]||{}).temper)||"",
-          piezasPend, kgPend, ultimaMachine:e.ultimaMachine, ultimaFecha:formatearFecha(e.ultimaFecha),
-          planta, Part:e.Part, linea, descrip:e.descrip, long:e.long, cliente:e.cliente, prio:e.prio
+          clave,
+          aleacion: ((mapaAleacionTemper[clave] || {}).aleacion) || "",
+          temper: ((mapaAleacionTemper[clave] || {}).temper) || "",
+          piezasPend,
+          kgPend,
+          ultimaMachine: e.ultimaMachine,
+          ultimaFecha: formatearFecha(e.ultimaFecha),
+          planta,
+          Part: e.Part,
+          linea,
+          descrip: e.descrip,
+          long: e.long,
+          cliente: e.cliente,
+          prio: e.prio
         });
-      }else if(piezasTmp>e.piezasExtrude && new Date(e.ultimaFecha)>=limiteNovedades){
+      } 
+      // TMP-IN mayor a EXTRUSIÓN → Novedad
+      else if (piezasTmp > e.piezasExtrude && fechaExtrude >= limiteNovedades) {
         novedades.push({
-          clave, aleacion:((mapaAleacionTemper[clave]||{}).aleacion)||"",
-          temper:((mapaAleacionTemper[clave]||{}).temper)||"",
-          piezasTmp, kgTmp, piezasExtrude:e.piezasExtrude, kgExtrude:e.kgExtrude,
-          diffPiezas:piezasTmp - e.piezasExtrude, diffKg: kgTmp - e.kgExtrude,
-          ultimaMachine:e.ultimaMachine, ultimaFecha:formatearFecha(e.ultimaFecha),
-          planta, Part:e.Part, linea, descrip:e.descrip, long:e.long, cliente:e.cliente, prio:e.prio
+          clave,
+          aleacion: ((mapaAleacionTemper[clave] || {}).aleacion) || "",
+          temper: ((mapaAleacionTemper[clave] || {}).temper) || "",
+          piezasTmp,
+          kgTmp,
+          piezasExtrude: e.piezasExtrude,
+          kgExtrude: e.kgExtrude,
+          diffPiezas: piezasTmp - e.piezasExtrude,
+          diffKg: kgTmp - e.kgExtrude,
+          ultimaMachine: e.ultimaMachine,
+          ultimaFecha: formatearFecha(e.ultimaFecha),
+          planta,
+          Part: e.Part,
+          linea,
+          descrip: e.descrip,
+          long: e.long,
+          cliente: e.cliente,
+          prio: e.prio
         });
       }
     });
 
-    datosPendientes=pendientes; datosNovedades=novedades; cacheAOk=true;
+   // 🔹 Detectar TMP-IN sin registro o con EXTRUSIÓN en 0
+for (const [clave, t] of Object.entries(tmpMap)) {
+  const e = extrudeMap[clave]; // buscar si existe extrusión
+  const fechaTmp = new Date(t.dt || new Date());
+  if (fechaTmp < limiteNovedades) continue; // solo desde abril 2025
 
-    // Render tabla A
+ // condición: solo si NO existe ningún registro de extrusión
+const sinExtrusion = !e;
+
+if (sinExtrusion) {
+    novedades.push({
+      clave,
+      aleacion: ((mapaAleacionTemper[clave] || {}).aleacion) || "",
+      temper: ((mapaAleacionTemper[clave] || {}).temper) || "",
+      piezasTmp: t.piezas || 0,
+      kgTmp: t.kg || 0,
+      piezasExtrude: e ? e.piezasExtrude : 0,
+      kgExtrude: e ? e.kgExtrude : 0,
+      diffPiezas: t.piezas - (e ? e.piezasExtrude : 0),
+      diffKg: t.kg - (e ? e.kgExtrude : 0),
+      ultimaMachine: e ? (e.ultimaMachine || "Sin Extrusión") : (t.MachineName || "Sin Extrusión"),
+      ultimaFecha: formatearFecha(e?.ultimaFecha || t.dt || new Date()),
+      planta: getPlanta(e?.ultimaMachine || t.MachineName || "-"),
+      Part: e?.Part || t.Part || "Sin Extrusión",
+      linea: lineasMap[clave] || "-",
+      descrip: e?.descrip || t.descrip || "Sin Extrusión",
+      long: e?.long || t.long || "Sin Extrusión",
+      cliente: e?.cliente || t.cliente || "Sin Extrusión",
+      prio: e?.prio || t.prio || "Sin Extrusión"
+    });
+  }
+}
+
+
+
+
+    // =====================================================
+    //  ACTUALIZAR TABLAS Y DASHBOARD
+    // =====================================================
+    datosPendientes=pendientes; 
+    datosNovedades=novedades; 
+    cacheAOk=true;
+
     renderTablaA();
-    // Novedades
     updateNovedadesButton('btnNovedadesExtrusion', datosNovedades.length);
     if(datosNovedades.length) renderTablaNovedades(); else clearTable('tablaNovedades');
 
-        // Actualiza dashboard si estás ahí
     if(currentView==='dashboard') renderDashboard();
-
-    // ⬅️ Aquí sí
     setUltimaActualizacion();
 
   }catch(e){
@@ -1496,6 +1606,7 @@ async function cargarA_Extrusion(){
     setLoading(false);
   }
 }
+
 
 
 async function cargarB_Sorting(){
@@ -2033,6 +2144,7 @@ document.addEventListener('DOMContentLoaded',()=>{ showMenu('dashboard'); });
 </script>
 </body>
 </html>
+
 
 
 
