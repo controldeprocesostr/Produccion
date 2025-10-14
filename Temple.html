@@ -1029,7 +1029,7 @@ async function generarPlanilla(){
     // Calcular rango: fecha y 3 días antes
     const fechaObj = new Date(fecha);
     const fechaInicio = new Date(fechaObj); 
-    fechaInicio.setDate(fechaObj.getDate() - 3);
+    fechaInicio.setDate(fechaObj.getDate() - 5);
 
     // --- Llamado API ---
     const payload = { 
@@ -2144,6 +2144,7 @@ document.addEventListener('DOMContentLoaded',()=>{ showMenu('dashboard'); });
 </script>
 </body>
 </html>
+
 
 
 
