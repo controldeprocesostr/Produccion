@@ -11,6 +11,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Firebase compat (igual que en tu app) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 	
 <style>
   :root{
@@ -335,6 +338,23 @@ tr.destacado {
   font-weight: bold;
   color: #000;
 }
+
+/* ==== Corrección de posición para los filtros del borde derecho ==== */
+th:last-child .filter-content,
+th:nth-last-child(2) .filter-content {
+  left: auto !important;
+  right: 0 !important;
+  transform: translateX(-100%) !important;
+}
+
+.filter-content {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  min-width: 160px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.25);
+  z-index: 9999;
+}
 	
 </style>
 </head>
@@ -430,6 +450,8 @@ tr.destacado {
         <th class="sortable" data-col="11">Aleación <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="11"></div></span></th>
         <th class="sortable" data-col="12">Planta <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="12"></div></span></th>
         <th class="sortable" data-col="13">Cliente <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="13"></div></span></th>
+        <th class="sortable" data-col="14">Estado Inv<span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="14"></div></span></th>
+
       </tr></thead><tbody></tbody>
       <tfoot><tr><td colspan="5" style="text-align:right"><b>TOTAL Kg Pend:</b></td><td id="totalKgPend">0</td><td colspan="8"></td></tr></tfoot>
       </table>
@@ -694,6 +716,20 @@ tr.destacado {
 
 <script>
 /* ===========================
+   Firebase (igual que tu app)
+   =========================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyAB4UlwaVJzc4U4VbmddLf4mejKAOvTufw",
+  authDomain: "hornosapp-60887.firebaseapp.com",
+  databaseURL: "https://hornosapp-60887-default-rtdb.firebaseio.com",
+  projectId: "hornosapp-60887",
+};
+firebase.initializeApp(firebaseConfig);
+const db      = firebase.database();
+const dbInv   = db.ref("inventarioPorTemplar");
+
+
+/* ===========================
    Estado / Cache
    =========================== */
 let currentView='dashboard';
@@ -801,6 +837,54 @@ function getPlanta(ultimaMachine){
   if(["PRENSA 7-5","PRENSA 7-9","PRENSA 7-10"].includes(m)) return "A3";
   return "OTRA";
 }
+
+/* ==========================================================
+   🔄 Último estado por SOITEM (Inventario → ERP)
+   ========================================================== */
+let ultimoEstadoPorSoitem = {}; // { soitem: {fechaBase, turno, fechaOK, comentario, ok} }
+
+function escucharUltimosEstadosInventario() {
+  const ref = dbInv.child("revisados");
+  ref.on("value", (snapshot) => {
+    const data = snapshot.val() || {};
+    const map = {};
+
+    // Recorremos fechas y turnos para quedarnos con el más reciente por soitem
+    Object.entries(data).forEach(([fecha, turnos]) => {
+      Object.entries(turnos).forEach(([turno, items]) => {
+        Object.entries(items).forEach(([clave, val]) => {
+          if (!map[clave] || new Date(val.fechaOK) > new Date(map[clave].fechaOK)) {
+            map[clave] = {
+              fechaBase: fecha,
+              turno,
+              fechaOK: val.fechaOK,
+              comentario: val.comentario || null,
+              ok: !!val.ok,
+            };
+          }
+        });
+      });
+    });
+
+    ultimoEstadoPorSoitem = map;
+    // Si ya está dibujada la tabla, actualizamos la columna sin tocar lo demás
+    try { refreshColumnaEstadoInv(); } catch(e) {}
+  });
+}
+
+// 🔹 Texto/HTML que se mostrará en la columna
+function estadoInventarioHTML(soitem) {
+  const e = ultimoEstadoPorSoitem[soitem];
+  if (!e) {
+    return `<span style="color:#6b7280;">⏳ Pendiente</span>`;
+  }
+  if (e.ok) {
+    return `<span style="color:#059669;font-weight:700;">✅ OK</span><br><small>${e.turno} – ${e.fechaBase}</small>`;
+  }
+  // Tiene comentario
+  return `<span style="color:#f59e0b;">💬 ${e.comentario || "Comentario"}</span><br><small>${e.turno} – ${e.fechaBase}</small>`;
+}
+
 
 /* ===========================
    Fecha de última actualización
@@ -928,17 +1012,42 @@ function renderTablaA(){
   const tb=document.querySelector('#tablaPendientes tbody');
   tb.innerHTML=datosPendientes.map(r=>`
     <tr>
-      <td>${r.clave}</td><td>${r.Part}</td><td>${r.descrip}</td><td>${r.prio}</td><td>${r.piezasPend}</td>
-      <td>${(r.kgPend??0).toFixed(0)}</td><td>${r.long}</td><td>${r.ultimaMachine}</td>
-      <td>${r.linea}</td><td>${r.temper}</td><td>${r.ultimaFecha}</td><td>${r.aleacion}</td>
-      <td>${r.planta}</td><td>${r.cliente}</td>
+      <td>${r.clave}</td>
+      <td>${r.Part}</td>
+      <td>${r.descrip}</td>
+      <td>${r.prio}</td>
+      <td>${r.piezasPend}</td>
+      <td>${(r.kgPend??0).toFixed(0)}</td>
+      <td>${r.long}</td>
+      <td>${r.ultimaMachine}</td>
+      <td>${r.linea}</td>
+      <td>${r.temper}</td>
+      <td>${r.ultimaFecha}</td>
+      <td>${r.aleacion}</td>
+      <td>${r.planta}</td>
+      <td>${r.cliente}</td>
+      <!-- 👇 NUEVA COLUMNA -->
+      <td class="col-estado-inv">${estadoInventarioHTML(r.clave)}</td>
     </tr>
   `).join('');
+
   buildFiltersFor('tablaPendientes');
   attachSortHandlers('tablaPendientes');
   renderPaged('tablaPendientes');
   recalcTotalKg();
 }
+
+// Reescribe solo la última columna de cada fila usando el SOITEM de la col 0
+function refreshColumnaEstadoInv(){
+  const rows = document.querySelectorAll('#tablaPendientes tbody tr');
+  rows.forEach(tr => {
+    const soitem = (tr.cells[0]?.textContent || '').trim();  // col 0 = SOITEM
+    const tdEstado = tr.querySelector('.col-estado-inv') || tr.cells[tr.cells.length-1];
+    if (soitem && tdEstado) tdEstado.innerHTML = estadoInventarioHTML(soitem);
+  });
+}
+
+
 function renderTablaB(){
   const tb=document.querySelector('#tablaPendientesTemper tbody');
   tb.innerHTML=mayoresTMP.map(r=>`
@@ -2140,10 +2249,24 @@ document.getElementById("btnQuitarFiltros").addEventListener("click", () => {
 /* ===========================
    Init
    =========================== */
-document.addEventListener('DOMContentLoaded',()=>{ showMenu('dashboard'); });
+document.addEventListener('DOMContentLoaded',()=>{
+  showMenu('dashboard');
+  escucharUltimosEstadosInventario(); // 👈 empieza a escuchar estados en tiempo real
+});
+
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
 
 
 
