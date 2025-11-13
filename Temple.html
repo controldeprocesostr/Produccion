@@ -355,6 +355,23 @@ th:nth-last-child(2) .filter-content {
   box-shadow: 0 4px 8px rgba(0,0,0,0.25);
   z-index: 9999;
 }
+
+.obs-cell {
+  width: 100%;
+  min-height: 20px;
+  padding: 3px 4px;
+  outline: none;
+  border: none;
+  background: transparent;
+  white-space: normal !important; /* Permite varias líneas */
+  overflow-wrap: break-word;
+}
+
+.obs-cell.long-text {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
 	
 </style>
 </head>
@@ -492,6 +509,16 @@ th:nth-last-child(2) .filter-content {
         <th class="sortable" data-col="7">Turno <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="7"></div></span></th>
         <th class="sortable" data-col="8">Fecha <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="8"></div></span></th>
         <th class="sortable" data-col="9">Horas <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientesTemper" data-col="9"></div></span></th>
+
+<th class="sortable" data-col="10">
+  Observaciones
+  <span class="filter-box">
+    <span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span>
+    <div class="filter-content" data-table="tablaPendientesTemper" data-col="10"></div>
+  </span>
+</th>
+
+
       </tr></thead><tbody></tbody></table>
     </div>
     </div>
@@ -842,6 +869,8 @@ function getPlanta(ultimaMachine){
    🔄 Último estado por SOITEM (Inventario → ERP)
    ========================================================== */
 let ultimoEstadoPorSoitem = {}; // { soitem: {fechaBase, turno, fechaOK, comentario, ok} }
+let obsSortingMap = {}; // Observaciones exclusivas de SORTING → Por Entregar
+
 
 function escucharUltimosEstadosInventario() {
   const ref = dbInv.child("revisados");
@@ -885,6 +914,23 @@ function estadoInventarioHTML(soitem) {
   return `<span style="color:#f59e0b;">💬 ${e.comentario || "Comentario"}</span><br><small>${e.turno} – ${e.fechaBase}</small>`;
 }
 
+function escucharObsSorting() {
+  const ref = db.ref("sortingObservaciones");
+
+  ref.on("value", snap => {
+    obsSortingMap = {};
+    const data = snap.val() || {};
+
+    Object.entries(data).forEach(([soitem, val]) => {
+      obsSortingMap[soitem] = val.comentario || "";
+    });
+
+    // Si estamos viendo POR ENTREGAR → actualizar tabla
+    if (currentView === "por-entregar") {
+      renderTablaB();
+    }
+  });
+}
 
 /* ===========================
    Fecha de última actualización
@@ -1048,18 +1094,48 @@ function refreshColumnaEstadoInv(){
 }
 
 
-function renderTablaB(){
-  const tb=document.querySelector('#tablaPendientesTemper tbody');
-  tb.innerHTML=mayoresTMP.map(r=>`
-    <tr>
-      <td>${r.soitem}</td><td>${r.tmpin}</td><td>${r.temper}</td><td>${r.pendiente}</td><td>${r.Machine}</td>
-      <td>${r.Part}</td><td>${r.Descripcion}</td><td>${r.Turno}</td><td>${r.FechaDT3}</td><td>${r.HorasTrans}</td>
-    </tr>
-  `).join('');
+function renderTablaB() {
+  const tb = document.querySelector('#tablaPendientesTemper tbody');
+
+  tb.innerHTML = mayoresTMP.map(r => {
+    const obs = obsSortingMap[r.soitem] || "";
+
+    // reducir letra si es largo
+    const clase = (obs.length > 25) ? "long-text" : "";
+
+    return `
+      <tr>
+        <td>${r.soitem}</td>
+        <td>${r.tmpin}</td>
+        <td>${r.temper}</td>
+        <td>${r.pendiente}</td>
+        <td>${r.Machine}</td>
+        <td>${r.Part}</td>
+        <td>${r.Descripcion}</td>
+        <td>${r.Turno}</td>
+        <td>${r.FechaDT3}</td>
+        <td>${r.HorasTrans}</td>
+
+        <!-- columna observaciones -->
+        <td>
+          <div class="obs-cell ${clase}"
+               data-soitem="${r.soitem}"
+               contenteditable="true"
+               ondblclick="mostrarObsModal('${r.soitem}', this.innerText)"
+               onblur="guardarObsSorting('${r.soitem}', this.innerText)">
+            ${obs}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // filtros y paginado existentes
   buildFiltersFor('tablaPendientesTemper');
   attachSortHandlers('tablaPendientesTemper');
   renderPaged('tablaPendientesTemper');
 }
+
 
 function renderTablaNovedades(){
   const tb=document.querySelector('#tablaNovedades tbody');
@@ -1780,6 +1856,14 @@ async function cargarB_Sorting(){
           HorasTrans:(tmpinMap[clave].HorasTrans).toFixed(1) });
       }
     }
+ 
+// 🔥 eliminar comentarios para soitems que ya no tienen diferencia
+Object.keys(obsSortingMap).forEach(soitem => {
+  const siguePendiente = mayoresTMP.some(x => x.soitem === soitem);
+  if (!siguePendiente) {
+    db.ref("sortingObservaciones/" + soitem).remove();
+  }
+});
 
     cacheBOk=true;
 
@@ -2173,6 +2257,46 @@ document.addEventListener("click", function (e) {
   ultimaFilaSeleccionada = fila;
 });
 
+function guardarObsSorting(soitem, texto) {
+  if (!soitem) return;
+
+  const ref = db.ref("sortingObservaciones/" + soitem);
+
+  if (!texto.trim()) {
+    ref.remove(); // borrar si está vacío
+    return;
+  }
+
+  ref.set({
+    comentario: texto.trim(),
+    fecha: new Date().toISOString()
+  });
+}
+
+let soitemModalActivo = null;
+
+function mostrarObsModal(soitem, texto) {
+  soitemModalActivo = soitem;
+  document.getElementById("modalObsTexto").value = texto || "";
+  document.getElementById("modalObs").style.display = "flex";
+}
+
+function cerrarObsModal() {
+  document.getElementById("modalObs").style.display = "none";
+}
+
+function guardarObsDesdeModal() {
+  const texto = document.getElementById("modalObsTexto").value;
+  guardarObsSorting(soitemModalActivo, texto);
+
+  // actualizar input original
+  const input = document.querySelector(`input[data-soitem="${soitemModalActivo}"]`);
+  if (input) input.value = texto;
+
+  cerrarObsModal();
+}
+
+
 // Mostrar botón si hay filas resaltadas
 function actualizarBotonQuitarResaltado() {
   const hayResaltadas = document.querySelectorAll("tr.destacado").length > 0;
@@ -2253,10 +2377,53 @@ document.addEventListener('DOMContentLoaded',()=>{
   showMenu('dashboard');
   escucharUltimosEstadosInventario(); // 👈 empieza a escuchar estados en tiempo real
 });
+escucharObsSorting(); // 👈 Observaciones del módulo POR ENTREGAR
+
 
 </script>
+
+<!-- Modal Observaciones Sorting -->
+<div id="modalObs" 
+     style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+            background:#0008; backdrop-filter:blur(3px); 
+            align-items:center; justify-content:center; z-index:9999;">
+  
+  <div style="background:white; padding:20px; width:300px; border-radius:10px;">
+    <h3 style="margin-top:0;">Observación</h3>
+    <textarea id="modalObsTexto" 
+              style="width:100%; height:120px; font-size:14px;"></textarea>
+
+    <div style="text-align:right; margin-top:10px;">
+      <button onclick="cerrarObsModal()">Cerrar</button>
+      <button onclick="guardarObsDesdeModal()" style="background:#00e5ff; border:none;
+              padding:6px 12px; border-radius:6px;">Guardar</button>
+    </div>
+  </div>
+
+</div>
+
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
