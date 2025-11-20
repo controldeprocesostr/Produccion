@@ -1605,11 +1605,15 @@ async function cargarA_Extrusion(){
     ]);
 
     // =====================================================
-    //  MAPA EXTRUSIÓN
-    // =====================================================
-    const extrudeMap = {};
+//  MAPA EXTRUSIÓN — SOLO SE TOMAN FECHAS CON PZS > 0
+// =====================================================
+const extrudeMap = {};
+
 extrude.forEach(e => {
   const clave = `${e.sonum}-${e.soitemnum}`;
+  const pc = Number(e.PcProd) || 0;
+  const kg = Number(e.KgProd) || 0;
+
   if (!extrudeMap[clave]) {
     extrudeMap[clave] = {
       piezasExtrude: 0,
@@ -1624,16 +1628,19 @@ extrude.forEach(e => {
     };
   }
 
-  const pc = Number(e.PcProd) || 0;
-  const kg = Number(e.KgProd) || 0;
+  // Acumula solo piezas reales
   extrudeMap[clave].piezasExtrude += pc;
   extrudeMap[clave].kgExtrude += kg;
 
-  // 🔹 Siempre guardar máquina y fecha más reciente, incluso si PcProd = 0
-  if (!extrudeMap[clave].ultimaFecha || new Date(e.dt) > new Date(extrudeMap[clave].ultimaFecha)) {
-    extrudeMap[clave].ultimaFecha = e.dt;
-    extrudeMap[clave].ultimaMachine = (e.MachineName || "-").trim();
+  // 🔥 IMPORTANTE: la fecha válida es SOLO cuando tiene producción real
+  if (pc > 0 || kg > 0) {
+    if (!extrudeMap[clave].ultimaFecha || new Date(e.dt) > new Date(extrudeMap[clave].ultimaFecha)) {
+      extrudeMap[clave].ultimaFecha = e.dt;
+      extrudeMap[clave].ultimaMachine = (e.MachineName || "-").trim();
+    }
   }
+});
+
 
   // 🔹 Mantener los demás datos descriptivos actualizados
   extrudeMap[clave].Part = e.Part || "-";
@@ -2404,43 +2411,4 @@ escucharObsSorting(); // 👈 Observaciones del módulo POR ENTREGAR
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
