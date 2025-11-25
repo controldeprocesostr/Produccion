@@ -372,6 +372,61 @@ th:nth-last-child(2) .filter-content {
   line-height: 1.1;
 }
 
+
+.hora-ampm-input {
+  line-height: 1.2em !important;
+  padding-top: 2px !important;
+  padding-bottom: 0 !important;
+  height: 22px !important;
+}
+
+.titulo-en-temple {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 15px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.titulo-izq {
+  display: flex;
+  gap: 8px;
+}
+
+.titulo-der {
+  margin-left: 15px;
+}
+
+
+.titulo-en-temple {
+  background: #e7edff;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.titulo-texto {
+  display: inline-block;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.titulo-texto b {
+  font-weight: 700;
+}
+
+.separador {
+  display: inline-block;
+  width: 25px; /* separa visualmente */
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+
 	
 </style>
 </head>
@@ -550,6 +605,15 @@ th:nth-last-child(2) .filter-content {
           </select>
         </label>
       </div>
+<div id="loadingEnvejecimiento" style="display:none;text-align:center;padding:15px;">
+  <div class="spinner" style="
+    width:38px;height:38px;border:4px solid #d0d4ff;border-top-color:#3f51ff;
+    border-radius:50%;animation:spin 0.9s linear infinite;margin:auto;">
+  </div>
+  <span style="display:block;margin-top:6px;color:#333;font-size:15px;">Cargando…</span>
+</div>
+
+
 
       <!-- Planilla -->
       <div class="card printable" id="planillaContainer">
@@ -665,6 +729,14 @@ th:nth-last-child(2) .filter-content {
 
   <div class="card printable">
 <div id="tituloEnTemple" class="titulo-en-temple"></div>
+<div id="loadingEnTemple" style="display:none; text-align:center; padding:15px;">
+  <div class="spinner" style="
+    width:38px;height:38px;border:4px solid #d0d4ff;border-top-color:#3f51ff;
+    border-radius:50%;animation:spin 0.9s linear infinite;margin:auto;">
+  </div>
+  <span style="display:block;margin-top:6px;color:#333;font-size:15px;">Cargando…</span>
+</div>
+
     <div id="tablaEnTempleContainer">
       <i>Selecciona fecha y turno para mostrar resultados</i>
     </div>
@@ -755,6 +827,62 @@ firebase.initializeApp(firebaseConfig);
 const db      = firebase.database();
 const dbInv   = db.ref("inventarioPorTemplar");
 
+
+// === Convertir hora 24H a AM/PM ===
+function convertirAMPM(horaStr) {
+  if (!horaStr) return "";
+
+  let [h, m] = horaStr.split(":");
+  h = parseInt(h);
+
+  const ampm = h >= 12 ? "p. m." : "a. m.";
+  h = h % 12;
+  if (h === 0) h = 12;
+
+  return `${h}:${m} ${ampm}`;
+}
+
+
+
+// === Normalizar únicamente el horno ITALIANO ===
+function normalizarItaliano(nombre) {
+  if (!nombre) return "";
+  nombre = nombre.trim().toUpperCase();
+
+  // Si el nombre contiene la palabra ITALIANO → lo unifica
+  if (nombre.includes("ITALIANO")) return "ITALIANO";
+
+  return nombre;
+}
+
+
+// =========================
+// A — Escuchar ciclosActivos
+// =========================
+// 1. Declara el map
+let ciclosActivosMap = {};
+
+// 2. Declaras la función que escucha Firebase
+function escucharCiclosActivos() {
+  db.ref("ciclosActivos").on("value", snap => {
+    ciclosActivosMap = {};
+    snap.forEach(child => {
+      const meta = child.val()?.meta;
+      if (!meta) return;
+
+      const clave = normalizarItaliano(meta.horno);
+      ciclosActivosMap[clave] = {
+        horaInicio: meta.horaInicio || "",
+        horaFin: meta.horaFin || ""
+      };
+    });
+
+    console.log("🔥 ciclosActivosMap:", ciclosActivosMap);
+  });
+}
+
+// 3. ❗ ACTIVA EL LISTENER AQUÍ
+escucharCiclosActivos();
 
 /* ===========================
    Estado / Cache
@@ -918,6 +1046,8 @@ function escucharObsSorting() {
   const ref = db.ref("sortingObservaciones");
 
   ref.on("value", snap => {
+ 
+if (window.bloquearRedibujo) return; // <-- AGREGAR AQUÍ
     obsSortingMap = {};
     const data = snap.val() || {};
 
@@ -927,8 +1057,8 @@ function escucharObsSorting() {
 
     // Si estamos viendo POR ENTREGAR → actualizar tabla
     if (currentView === "por-entregar") {
-      renderTablaB();
-    }
+  actualizarSoloCeldasObservacion();
+}
   });
 }
 
@@ -1119,12 +1249,13 @@ function renderTablaB() {
         <!-- columna observaciones -->
         <td>
           <div class="obs-cell ${clase}"
-               data-soitem="${r.soitem}"
-               contenteditable="true"
-               ondblclick="mostrarObsModal('${r.soitem}', this.innerText)"
-               onblur="guardarObsSorting('${r.soitem}', this.innerText)">
-            ${obs}
-          </div>
+     data-soitem="${r.soitem}"
+     contenteditable="true"
+     onfocus="window.bloquearRedibujo = true"
+     onblur="window.bloquearRedibujo = false; guardarObsSorting('${r.soitem}', this.innerText)">
+  ${obs}
+</div>
+
         </td>
       </tr>
     `;
@@ -1201,10 +1332,15 @@ function splitAllot(allot){
    Generar Planilla
    ========================== */
 async function generarPlanilla(){
+document.getElementById("loadingEnvejecimiento").style.display = "block";
+document.getElementById("planillaContainer").style.display = "none";
+
+
   try{
     const fecha = document.getElementById("fechaPlanilla").value;     // "2025-09-15"
     const turnoSel = (document.getElementById("turnoPlanilla").value || "").toString().trim(); 
     const hornoSel = normalize(document.getElementById("hornoPlanilla").value);
+
 
     if(!fecha || !turnoSel || !hornoSel){ 
       alert("⚠️ Selecciona fecha, turno y horno."); 
@@ -1311,11 +1447,18 @@ tmpinOrdenado.forEach((r, idx) => {
     document.getElementById("turnoTexto").textContent  = turnoSel;
     document.getElementById("hornoTexto").textContent  = document.getElementById("hornoPlanilla").value;
 
-  }catch(err){
-    console.error(err);
-    alert("❌ Error al generar planilla: "+(err.message||err));
-  }
+document.getElementById("loadingEnvejecimiento").style.display = "none";
+document.getElementById("planillaContainer").style.display = "block";
+
+
+ } catch(err) {
+  console.error(err);
+  document.getElementById("loadingEnvejecimiento").style.display = "none";
+  document.getElementById("planillaContainer").style.display = "block";
+  alert("❌ Error al generar planilla: " + (err.message || err));
 }
+}
+
 
 /* ====== Paginación simple ====== */
 function renderPaged(tableId){
@@ -2005,6 +2148,10 @@ function generarResumenEnTemple() {
   const fecha = document.getElementById("fechaEnTemple").value;
   const turno = document.getElementById("turnoEnTemple").value;
 
+document.getElementById("loadingEnTemple").style.display = "block";
+document.getElementById("tablaEnTempleContainer").innerHTML = "";
+
+
   if (!fecha || !turno) {
     alert("Selecciona fecha y turno");
     return;
@@ -2027,22 +2174,72 @@ function generarResumenEnTemple() {
       const datosFiltrados = datosTMPIN.filter(item => item.shift?.toString() === turno);
 
       if (datosFiltrados.length === 0) {
-        document.getElementById("tablaEnTempleContainer").innerHTML = "<i>No hay registros TMPIN para esa fecha y turno</i>";
+        document.getElementById("tablaEnTempleContainer").innerHTML =
+          "<i>No hay registros TMPIN para esa fecha y turno</i>";
         return;
       }
 
       const agrupado = {};
+
+      // ========================
+      // AGRUPAR POR HORNO
+      // ========================
       datosFiltrados.forEach(item => {
-        const horno = item.MachineName?.trim() || "SIN HORNO";
+        const horno = normalizarItaliano(item.MachineName);
+
+
         const desc = item.descrip?.trim() || "Sin descripción";
         const kg = parseFloat(item.kg || 0);
-        const hora = new Date(item.dt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+        // Hora base tomada del DT (por si no existe Firebase)
+        let horaBase = new Date(item.dt).toISOString().substr(11,5); 
+let hora = convertirAMPM(horaBase);
+
+
+        // Si Firebase tiene horaFin → reemplazarla
+        const horaFirebase = ciclosActivosMap[horno]?.horaFin;
+if (horaFirebase) hora = convertirAMPM(horaFirebase);
+
 
         if (!agrupado[horno]) agrupado[horno] = { productos: {}, hora };
-        if (!agrupado[horno].productos[desc]) agrupado[horno].productos[desc] = 0;
+
+        if (!agrupado[horno].productos[desc]) {
+          agrupado[horno].productos[desc] = 0;
+        }
+
         agrupado[horno].productos[desc] += kg;
       });
 
+      // ========================
+      // CALCULAR TOTAL GENERAL
+      // ========================
+      const totalGeneral = Object.values(agrupado).reduce((sum, horno) => {
+        return (
+          sum +
+          Object.values(horno.productos).reduce((s, kg) => s + kg, 0)
+        );
+      }, 0);
+
+      // ========================
+      // TÍTULO PRINCIPAL
+      // ========================
+      const tituloFinal = `
+  <div class="titulo-en-temple">
+      <span class="titulo-texto">
+        🔥 Dentro de Hornos ${fecha} - Turno ${turno}
+        <span class="separador"></span>
+        Total General: <b>${totalGeneral.toFixed(0)} Kg</b>
+      </span>
+  </div>
+`;
+
+
+
+      document.getElementById("tituloEnTemple").innerHTML = tituloFinal;
+
+      // ========================
+      // ARMAR TARJETAS
+      // ========================
       let html = `<div class="dashboard-grid">`;
 
       Object.entries(agrupado).forEach(([horno, data]) => {
@@ -2051,40 +2248,33 @@ function generarResumenEnTemple() {
 
         Object.entries(data.productos).forEach(([desc, kg]) => {
           subtotal += kg;
-          productosHTML += `<div class="linea-gris"><b>${desc}</b>: ${kg.toFixed(0)} Kg</div>`;
+          productosHTML += `
+            <div class="linea-gris">
+              <b>${desc}</b>: ${kg.toFixed(0)} Kg
+            </div>`;
         });
-
-// Calcular total general
-const totalGeneral = Object.values(agrupado).reduce((sum, horno) => {
-  return sum + Object.values(horno.productos).reduce((s, k) => s + k, 0);
-}, 0);
-
-// Título con total general
-const tituloFinal = `
-  <div class="titulo-en-temple">
-    <div>🔥 Dentro de Hornos ${fecha} - Turno ${turno}</div>
-    <span class="total-general">Total General: ${totalGeneral.toFixed(0)} Kg</span>
-  </div>
-`;
-
-document.getElementById("tituloEnTemple").innerHTML = tituloFinal;
-
 
         html += `
           <div class="card-horno">
             <h3>🔥 ${horno}</h3>
             <label><b>Hora:</b> 
-            <input type="text" class="hora-ampm-input" value="${data.hora}" />
-            </label><br>
+              <input type="text"
+                     class="hora-ampm-input"
+                     value="${data.hora}"
+                     
+            </label>
+            <br>
             ${productosHTML}
             <div class="total"><b>Total:</b> ${subtotal.toFixed(0)} Kg</div>
             <div class="barra-total"><span style="width:100%"></span></div>
-          </div>
-        `;
+          </div>`;
       });
 
       html += `</div>`;
 
+      // ========================
+      // BOTONES 
+      // ========================
       html += `
         <div style="text-align:center;margin-top:12px;">
           <button onclick="descargarImagenEnTemple()" class="btn btn-accent">📸 Descargar</button>
@@ -2093,6 +2283,8 @@ document.getElementById("tituloEnTemple").innerHTML = tituloFinal;
         </div>`;
 
       document.getElementById("tablaEnTempleContainer").innerHTML = html;
+      document.getElementById("loadingEnTemple").style.display = "none";
+
     });
 }
 let imgEnTemple = "";
@@ -2275,6 +2467,23 @@ function guardarObsSorting(soitem, texto) {
 
 let soitemModalActivo = null;
 
+
+function actualizarSoloCeldasObservacion() {
+  const filas = document.querySelectorAll("#tablaPendientesTemper tbody tr");
+
+  filas.forEach(tr => {
+    const soitem = tr.cells[0].textContent.trim();
+    const nuevaObs = obsSortingMap[soitem] || "";
+    
+    const celda = tr.querySelector(".obs-cell");
+    if (celda && celda.innerText.trim() !== nuevaObs.trim()) {
+      celda.innerText = nuevaObs;
+      celda.classList.toggle("long-text", nuevaObs.length > 25);
+    }
+  });
+}
+
+
 function mostrarObsModal(soitem, texto) {
   soitemModalActivo = soitem;
   document.getElementById("modalObsTexto").value = texto || "";
@@ -2379,6 +2588,16 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 escucharObsSorting(); // 👈 Observaciones del módulo POR ENTREGAR
 
+// =========================================
+// C — Guardar la hora editada manualmente
+// =========================================
+function guardarHoraManual(horno, nuevaHora) {
+  if (!horno || !nuevaHora.trim()) return;
+
+  db.ref("ciclosActivos/" + horno + "/horaFin").set(nuevaHora.trim());
+}
+
+
 
 </script>
 
@@ -2404,6 +2623,5 @@ escucharObsSorting(); // 👈 Observaciones del módulo POR ENTREGAR
 
 </body>
 </html>
-
 
 
