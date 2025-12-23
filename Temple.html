@@ -1987,7 +1987,7 @@ async function cargarB_Sorting(){
       const totalTemper=temperMap[clave]||0;
       const pendiente=totalTMP-totalTemper;
       if(tmpinMap[clave].dt3Raw<fechaMinMostrar) continue;
-      if(tmpinMap[clave].HorasTrans<14) continue;
+      if(tmpinMap[clave].HorasTrans<15) continue;
 
       if(pendiente>0){
         mayoresTMP.push({ soitem:clave, tmpin:totalTMP, temper:totalTemper, pendiente,
@@ -2623,6 +2623,7 @@ function guardarHoraManual(horno, nuevaHora) {
 
 </body>
 </html>
+
 
 
 
