@@ -339,6 +339,26 @@ tr.destacado {
   color: #000;
 }
 
+/* ==== Resaltado visual para filas INSULBAR en Por Templar ==== */
+tr.fila-insulbar td {
+  background: linear-gradient(90deg, #fff200 0%, #ffb703 100%) !important;
+  color: #111827 !important;
+  font-weight: 800 !important;
+  border-color: #f97316 !important;
+}
+tr.fila-insulbar:hover td {
+  background: linear-gradient(90deg, #ffe100 0%, #fb923c 100%) !important;
+}
+tr.fila-insulbar td:nth-child(15) {
+  color: #7c2d12 !important;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+tr.fila-insulbar td:nth-child(15)::before {
+  content: "⚡ ";
+}
+
+
 /* ==== Corrección de posición para los filtros del borde derecho ==== */
 th:last-child .filter-content,
 th:nth-last-child(2) .filter-content {
@@ -522,10 +542,11 @@ th:nth-last-child(2) .filter-content {
         <th class="sortable" data-col="11">Aleación <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="11"></div></span></th>
         <th class="sortable" data-col="12">Planta <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="12"></div></span></th>
         <th class="sortable" data-col="13">Cliente <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="13"></div></span></th>
-        <th class="sortable" data-col="14">Estado Inv<span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="14"></div></span></th>
+        <th class="sortable" data-col="14">stdPract <span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="14"></div></span></th>
+        <th class="sortable" data-col="15">Estado Inv<span class="filter-box"><span class="filter-trigger" onclick="toggleFilter(this,event)">⏷</span><div class="filter-content" data-table="tablaPendientes" data-col="15"></div></span></th>
 
       </tr></thead><tbody></tbody>
-      <tfoot><tr><td colspan="5" style="text-align:right"><b>TOTAL Kg Pend:</b></td><td id="totalKgPend">0</td><td colspan="8"></td></tr></tfoot>
+      <tfoot><tr><td colspan="5" style="text-align:right"><b>TOTAL Kg Pend:</b></td><td id="totalKgPend">0</td><td colspan="10"></td></tr></tfoot>
       </table>
     </div>
   </div>
@@ -537,7 +558,7 @@ th:nth-last-child(2) .filter-content {
   <div id="ultimaInfoEntregar" class="ultimaInfo">Última actualización: -</div>
     <div class="section-note">Pendientes TMP-IN vs TEMPER. Usa Actualizar cuando entres a esta vista.</div>
     <div class="card" style="margin-bottom:8px;">
-      <label style="display:none;">Fecha Inicial: <input type="date" id="fechaInicial" value="2025-01-01"></label>
+      <label style="display:none;">Fecha Inicial: <input type="date" id="fechaInicial" value="2026-01-01"></label>
       <label>Fecha Final: <input type="date" id="fechaFinal"></label>
     </div>
 
@@ -1187,7 +1208,7 @@ function clearTable(tableId){ const tb=document.querySelector('#'+tableId+' tbod
 function renderTablaA(){
   const tb=document.querySelector('#tablaPendientes tbody');
   tb.innerHTML=datosPendientes.map(r=>`
-    <tr>
+    <tr class="${(r.stdPract || '').toUpperCase() === 'INSULBAR' ? 'fila-insulbar' : ''}">
       <td>${r.clave}</td>
       <td>${r.Part}</td>
       <td>${r.descrip}</td>
@@ -1202,7 +1223,8 @@ function renderTablaA(){
       <td>${r.aleacion}</td>
       <td>${r.planta}</td>
       <td>${r.cliente}</td>
-      <!-- 👇 NUEVA COLUMNA -->
+      <td>${r.stdPract || "-"}</td>
+      <!-- 👇 COLUMNA ESTADO INVENTARIO -->
       <td class="col-estado-inv">${estadoInventarioHTML(r.clave)}</td>
     </tr>
   `).join('');
@@ -1313,6 +1335,16 @@ const pick = (obj, ...keys) => {
 
 // Normaliza texto (ej: hornos, claves)
 const normalize = (s) => (s || "").toString().trim().toUpperCase();
+
+// Normaliza stdPract para Por Templar.
+// Todo lo que venga terminado en _ASSE o _P&D debe mostrarse como INSULBAR.
+function normalizarStdPract(valor){
+  const raw = (valor ?? "").toString().trim();
+  if(!raw) return "-";
+  const txt = raw.toUpperCase();
+  if(/(_ASSE|_P&D)$/.test(txt)) return "INSULBAR";
+  return txt;
+}
 
 // Divide "allot" en Aleación (números) y Temple (texto)
 function splitAllot(allot){
@@ -1738,7 +1770,7 @@ async function cargarA_Extrusion(){
   setLoading(true,'Cargando....');
   try{
     await cargarLineas();
-    const fechaInicio="2025-01-01";
+    const fechaInicio="2026-01-01";
     const fechaFin=new Date().toISOString().slice(0,10);
 
     const [extrude,tmpin,mapaAleacionTemper]=await Promise.all([
@@ -1767,7 +1799,8 @@ extrude.forEach(e => {
       descrip: e.descrip || "-",
       long: e.long || "-",
       cliente: e.cliente || "-",
-      prio: e.prio || "-"
+      prio: e.prio || "-",
+      stdPract: normalizarStdPract(e.stdPract ?? e.StdPract ?? e.STDPRACT ?? e.stdpract ?? e.std_pract)
     };
   }
 
@@ -1780,6 +1813,7 @@ extrude.forEach(e => {
     if (!extrudeMap[clave].ultimaFecha || new Date(e.dt) > new Date(extrudeMap[clave].ultimaFecha)) {
       extrudeMap[clave].ultimaFecha = e.dt;
       extrudeMap[clave].ultimaMachine = (e.MachineName || "-").trim();
+      extrudeMap[clave].stdPract = normalizarStdPract(e.stdPract ?? e.StdPract ?? e.STDPRACT ?? e.stdpract ?? e.std_pract ?? extrudeMap[clave].stdPract);
     }
   }
 });
@@ -1803,7 +1837,8 @@ tmpin.forEach(i=>{
       cliente:i.cliente||"-",
       prio:i.prio||"-",
       long:i.long||"-",
-      MachineName:i.MachineName||"-"
+      MachineName:i.MachineName||"-",
+      stdPract: normalizarStdPract(i.stdPract ?? i.StdPract ?? i.STDPRACT ?? i.stdpract ?? i.std_pract)
     };
   }
   tmpMap[clave].piezas+=(Number(i.PcProd)||0);
@@ -1812,6 +1847,7 @@ tmpin.forEach(i=>{
   // actualizar fecha si encuentra una más reciente
   if(new Date(i.dt)>new Date(tmpMap[clave].dt)){
     tmpMap[clave].dt=i.dt;
+    tmpMap[clave].stdPract = normalizarStdPract(i.stdPract ?? i.StdPract ?? i.STDPRACT ?? i.stdpract ?? i.std_pract ?? tmpMap[clave].stdPract);
   }
 });
 
@@ -1820,7 +1856,7 @@ tmpin.forEach(i=>{
     // =====================================================
     const pendientes = [];
     const novedades = [];
-    const limiteNovedades = new Date("2025-04-01"); // Solo mostrar desde abril 2025
+    const limiteNovedades = new Date("2026-02-01"); // Solo mostrar desde abril 2025
 
     // 🔹 Comparar claves existentes en Extrusión
     Object.entries(extrudeMap).forEach(([clave, e]) => {
@@ -1832,7 +1868,7 @@ tmpin.forEach(i=>{
       const linea = lineasMap[clave] || "-";
       const fechaExtrude = new Date(e.ultimaFecha);
 
-      // Mostrar solo desde 2025-04-01
+      // Mostrar solo desde 2026-02-01
       if (fechaExtrude < limiteNovedades) return;
 
       if (piezasPend > 0) {
@@ -1850,7 +1886,8 @@ tmpin.forEach(i=>{
           descrip: e.descrip,
           long: e.long,
           cliente: e.cliente,
-          prio: e.prio
+          prio: e.prio,
+          stdPract: e.stdPract || "-"
         });
       } 
       // TMP-IN mayor a EXTRUSIÓN → Novedad
@@ -1873,7 +1910,8 @@ tmpin.forEach(i=>{
           descrip: e.descrip,
           long: e.long,
           cliente: e.cliente,
-          prio: e.prio
+          prio: e.prio,
+          stdPract: e.stdPract || "-"
         });
       }
     });
@@ -1906,7 +1944,8 @@ if (sinExtrusion) {
       descrip: e?.descrip || t.descrip || "Sin Extrusión",
       long: e?.long || t.long || "Sin Extrusión",
       cliente: e?.cliente || t.cliente || "Sin Extrusión",
-      prio: e?.prio || t.prio || "Sin Extrusión"
+      prio: e?.prio || t.prio || "Sin Extrusión",
+      stdPract: e?.stdPract || t.stdPract || "-"
     });
   }
 }
@@ -1940,7 +1979,7 @@ if (sinExtrusion) {
 async function cargarB_Sorting(){
   setLoading(true,'Cargando...');
   try{
-    const fi=document.getElementById('fechaInicial')?.value || '2025-01-01';
+    const fi=document.getElementById('fechaInicial')?.value || '2026-01-01';
     const ff=document.getElementById('fechaFinal')?.value || new Date().toISOString().slice(0,10);
 
     const [tmpinData,temperData]=await Promise.all([
@@ -2348,6 +2387,7 @@ function compartirCorreoEnTemple() {
   const destinatarios = [
     "juan.marino@tecnoglass.com",
     "gilenis.torres@tecnoglass.com",
+    "carolina.salazar@tecnoglass.com",
     "gary.maldonado@tecnoglass.com",
     "miguel.redondo@tecnoglass.com",
     "ricardo.polo@tecnoglass.com",
@@ -2369,6 +2409,7 @@ function compartirCorreoEnTemple() {
     "analista.inventario@tecnoglass.com",
     "supervisores.inventario@tecnoglass.com",
     "edwin.cardenas@tecnoglass.com",
+    "giuseppe.riveira@tecnoglass.com",
     "jhon.caraballo@tecnoglass.com",
     "yaritza.escobar@tecnoglass.com",
     "solucionesnc.alutions@tecnoglass.com",
@@ -2379,6 +2420,7 @@ function compartirCorreoEnTemple() {
     "pintura.horizontal1@energiasolarsa.com",
     "insulbar@tecnoglass.com",
     "luis.ariza@tecnoglass.com",
+    "danilo.delaiglesia@tecnoglass.com",
     "maria.ramirez@tecnoglass.com",
     "orlando.mancilla@tecnoglass.com",
     "mario.herrera@tecnoglass.com",
@@ -2389,14 +2431,7 @@ function compartirCorreoEnTemple() {
     "richard.morales@tecnoglass.com",
     "jhoony.rodriguez@tecnoglass.com",
     "sergio.ruizc@tecnoglass.com",
-	"angye.merino@tecnoglass.com",
-	"carmen.rivera@tecnoglass.com",
-    "yasser.santos@tecnoglass.com",
-    "rossana.mendez@tecnoglass.com",
-    "angie.garizabalo@tecnoglass.com",
-	"ninfa.castellon@tecnoglass.com",
-	"wendy.delahoz@tecnoglass.com",
-    "ian.barrios@tecnoglass.com"  
+	"angye.merino@tecnoglass.com"  
   ];
 
   const to = destinatarios.join(";");
@@ -2627,11 +2662,6 @@ function guardarHoraManual(horno, nuevaHora) {
 
 </body>
 </html>
-
-
-
-
-
 
 
 
