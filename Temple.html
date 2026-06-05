@@ -1111,23 +1111,249 @@ function setUltimaActualizacion() {
 /* ===========================
    Conexiones Reales
    =========================== */
-async function cargarLineas() {
-  const url = "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent("https://docs.google.com/spreadsheets/d/e/2PACX-1vRS6VAInZZmrWB1tVnoBZQQnMWuBkfKT3EKCnfDdTkObIQDAZfFFZnk6ga4afkfA-tvEady3I5ZXE07/pub?output=csv");
-  const resp = await fetch(url);
-  const csvText = await resp.text();
 
-  const rows = csvText.split(/\r?\n/).map(r => r.split(","));
-  const headers = rows.shift().map(h => h.trim().toUpperCase());
+/* ==========================================================
+   LÍNEAS DESDE GOOGLE DRIVE - SIN APPS SCRIPT Y SIN PROXIES
+   Usa Google Visualization JSONP para evitar CORS.
+   Funciona desde GitHub Pages y también abriendo el HTML local.
+   ========================================================== */
 
-  const claveIndex = headers.findIndex(h => 'SOITEM' === h);
-  const lineaIndex = headers.findIndex(h => 'LINEA' === h);
+// Hoja real de Google Sheets para cruzar SOITEM -> LÍNEA.
+// Esta versión usa el ID real /spreadsheets/d/ID/ y Google GViz JSONP.
+// No necesitas Apps Script ni proxy público.
+const URLS_LINEAS_CSV = [
+  "https://docs.google.com/spreadsheets/d/1xbOXOoMXn9E55CaIRxBsdO9KjaG4bEKtKCc5NKkQiRQ/edit?gid=0#gid=0"
+];
 
-  lineasMap = {};
-  rows.forEach(row => {
-    const clave = (row[claveIndex] || "").trim();
-    const linea = (row[lineaIndex] || "").trim() || "-";
-    if (clave) lineasMap[clave] = linea;
+function normalizarTextoLinea(txt) {
+  return String(txt || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+function normalizarSoitemLinea(v) {
+  return String(v || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[–—]/g, "-");
+}
+
+function convertirUrlCsvAGviz(sheetUrl, callbackName) {
+  const u = new URL(sheetUrl, window.location.href);
+
+  let spreadsheetId = "";
+  let gid = u.searchParams.get("gid") || "";
+
+  // También toma gid desde el hash: #gid=0
+  if (!gid && u.hash) {
+    const hashParams = new URLSearchParams(u.hash.replace(/^#/, ""));
+    gid = hashParams.get("gid") || "";
+  }
+
+  // Caso recomendado: https://docs.google.com/spreadsheets/d/ID/edit?gid=0#gid=0
+  const matchReal = u.pathname.match(/\/spreadsheets\/d\/([^/]+)/i);
+  if (matchReal) spreadsheetId = matchReal[1];
+
+  // Caso publicado viejo: /spreadsheets/d/e/2PACX.../pub?output=csv
+  // Lo dejamos como respaldo, pero para GViz el mejor es el ID real.
+  let base = "";
+  if (spreadsheetId && spreadsheetId !== "e") {
+    base = `${u.origin}/spreadsheets/d/${spreadsheetId}/gviz/tq`;
+  } else {
+    base = u.origin + u.pathname
+      .replace(/\/pubhtml?$/i, "/gviz/tq")
+      .replace(/\/pub$/i, "/gviz/tq");
+
+    if (!/\/gviz\/tq$/i.test(base)) {
+      base = base.replace(/\/?$/i, "/gviz/tq");
+    }
+  }
+
+  const params = new URLSearchParams();
+  params.set("tqx", "out:json;responseHandler:" + callbackName);
+  params.set("tq", "select *");
+  params.set("headers", "1");
+
+  const sheet = u.searchParams.get("sheet");
+  if (gid) params.set("gid", gid);
+  if (sheet) params.set("sheet", sheet);
+
+  // Evita caché cuando actualizas.
+  params.set("_", Date.now().toString());
+
+  return base + "?" + params.toString();
+}
+function valorCeldaGViz(celda) {
+  if (!celda) return "";
+  if (celda.f !== undefined && celda.f !== null) return celda.f;
+  if (celda.v !== undefined && celda.v !== null) return celda.v;
+  return "";
+}
+
+function tablaGVizAObjetos(table) {
+  if (!table || !Array.isArray(table.cols) || !Array.isArray(table.rows)) {
+    throw new Error("Respuesta GViz inválida o sin tabla");
+  }
+
+  const headers = table.cols.map((c, i) => {
+    const label = (c.label || c.id || "").toString().trim();
+    return label || ("COL" + (i + 1));
   });
+
+  return table.rows.map(r => {
+    const obj = {};
+    const celdas = r.c || [];
+    headers.forEach((h, i) => {
+      obj[h] = valorCeldaGViz(celdas[i]);
+    });
+    return obj;
+  });
+}
+
+function cargarGVizJSONP(csvUrl, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const callbackName = "__lineasGVizCallback_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+    const script = document.createElement("script");
+    let terminado = false;
+
+    // Respaldo por si Google responde con google.visualization.Query.setResponse(...)
+    const oldGoogle = window.google;
+    const oldSetResponse = window.google?.visualization?.Query?.setResponse;
+    window.google = window.google || {};
+    window.google.visualization = window.google.visualization || {};
+    window.google.visualization.Query = window.google.visualization.Query || {};
+
+    function limpiar() {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      try { delete window[callbackName]; } catch(e) { window[callbackName] = undefined; }
+
+      if (oldSetResponse) {
+        window.google.visualization.Query.setResponse = oldSetResponse;
+      } else if (window.google?.visualization?.Query) {
+        try { delete window.google.visualization.Query.setResponse; } catch(e) {}
+      }
+
+      // No borramos window.google completo si ya existía o si otro script lo usa.
+      if (!oldGoogle && window.google && Object.keys(window.google).length === 0) {
+        try { delete window.google; } catch(e) {}
+      }
+    }
+
+    function finalizarOk(resp) {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(timer);
+      limpiar();
+      resolve(resp);
+    }
+
+    function finalizarError(err) {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(timer);
+      limpiar();
+      reject(err);
+    }
+
+    window[callbackName] = finalizarOk;
+    window.google.visualization.Query.setResponse = finalizarOk;
+
+    const timer = setTimeout(() => {
+      finalizarError(new Error("Timeout leyendo hoja de líneas por GViz"));
+    }, timeoutMs);
+
+    script.onerror = () => finalizarError(new Error("No se pudo cargar script GViz"));
+    script.src = convertirUrlCsvAGviz(csvUrl, callbackName);
+
+    console.log("🔎 Leyendo líneas sin proxy por GViz:", script.src);
+    document.head.appendChild(script);
+  });
+}
+
+async function cargarLineas() {
+  lineasMap = {};
+  let totalLineas = 0;
+  const errores = [];
+
+  for (const csvUrl of URLS_LINEAS_CSV) {
+    if (!csvUrl) continue;
+
+    try {
+      const resp = await cargarGVizJSONP(csvUrl, 25000);
+
+      if (resp.status && resp.status !== "ok") {
+        const detalle = Array.isArray(resp.errors)
+          ? resp.errors.map(e => e.detailed_message || e.reason || e.message).join(" | ")
+          : JSON.stringify(resp.errors || resp);
+        throw new Error("GViz status " + resp.status + ": " + detalle);
+      }
+
+      const registros = tablaGVizAObjetos(resp.table);
+      if (!registros.length) throw new Error("La hoja de líneas no trajo registros");
+
+      const headersOriginales = Object.keys(registros[0] || {});
+      const headersNorm = headersOriginales.map(h => normalizarTextoLinea(h));
+
+      const buscarHeader = (...opciones) => {
+        const opts = opciones.map(normalizarTextoLinea);
+        const idx = headersNorm.findIndex(h => opts.includes(h));
+        return idx >= 0 ? headersOriginales[idx] : "";
+      };
+
+      const claveHeader = buscarHeader(
+        "SOITEM", "SO ITEM", "SOITEMNUM", "SOITEMN", "SOITEMNO", "SO-ITEM", "ORDENITEM"
+      );
+
+      // Respaldo por si la hoja tiene SO y ITEM separados.
+      const soHeader = buscarHeader("SO", "SONUM", "SO NUM", "ORDEN", "ORDER");
+      const itemHeader = buscarHeader("ITEM", "SOITEM", "SOITEMNUM", "SO ITEM NUM", "ITEMNUM");
+
+      const lineaHeader = buscarHeader(
+        "LINEA", "LÍNEA", "LINEAS", "LNEA", "LINE", "RUTA LINEA", "RUTALINEA"
+      );
+
+      if ((!claveHeader && !(soHeader && itemHeader)) || !lineaHeader) {
+        throw new Error(
+          "No encontré columnas SOITEM y LINEA. Encabezados: " +
+          headersOriginales.join(" | ")
+        );
+      }
+
+      registros.forEach(row => {
+        let clave = "";
+        if (claveHeader) {
+          clave = normalizarSoitemLinea(row[claveHeader]);
+        } else if (soHeader && itemHeader) {
+          clave = normalizarSoitemLinea(`${row[soHeader]}-${row[itemHeader]}`);
+        }
+
+        const linea = String(row[lineaHeader] || "").trim() || "-";
+        if (clave) {
+          lineasMap[clave] = linea;
+          totalLineas++;
+        }
+      });
+
+      console.log("✅ Líneas cargadas sin proxy:", totalLineas, lineasMap);
+
+    } catch (err) {
+      errores.push(err.message);
+      console.error("❌ Error cargando hoja de líneas sin proxy:", err);
+    }
+  }
+
+  if (errores.length) {
+    console.warn("⚠️ Errores leyendo líneas:", errores);
+  }
+
+  if (totalLineas === 0) {
+    console.warn("⚠️ No se cargaron líneas. El ERP seguirá cargando producción con Línea = '-'.");
+    // Importante: NO hacemos throw, para no bloquear las APIs de producción.
+    lineasMap = {};
+  }
 }
 
 async function consultarDepartamento(fechaInicio,fechaFin,departamento){
@@ -2662,6 +2888,3 @@ function guardarHoraManual(horno, nuevaHora) {
 
 </body>
 </html>
-
-
-
