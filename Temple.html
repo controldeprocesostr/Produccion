@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>ERP Producción V27.3</title>
+<title>ERP Producción V27.4</title>
 
 <!-- Chart.js para Dashboard -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -2246,7 +2246,10 @@ function itemCargaPlanillaV6(r, sierraMap){
     soDisplay, soitem, sonum,
     pzs: pick(r,"pc","Pc","PcProd","cantidad"),
     kg: pick(r,"kg","Kg","KgProd"), long: matchS.long || "", prensa: matchS.prensa || "",
-    cliente: pick(r,"cliente","Cliente"), acabado: pick(r,"descrip","Descripcion","descripcion"), prio: pick(r,"prio","Prio"), aleacion, temple
+    cliente: pick(r,"cliente","Cliente"),
+    acabado: pick(r,"descrip","Descripcion","descripcion"),
+    prio: pick(r,"prio","Prio","PRIO","prioridad","Prioridad","PRIORIDAD","priority","Priority"),
+    aleacion, temple
   };
 }
 async function guardarCargaPlanillaFirebaseV6(fecha, turno, horno, items){
@@ -3803,7 +3806,7 @@ function llenarItemsV8(ws, items, pageIndex){
     ws.getCell(`L${r}`).value = it.prensa || '';
     ws.getCell(`M${r}`).value = wt;
     ws.getCell(`N${r}`).value = it.temple || '';
-    ws.getCell(`O${r}`).value = ''; // resistencia: no se llena con prioridad para no alterar el formato oficial
+    ws.getCell(`O${r}`).value = it.prio || ''; // el formato usa esta columna para mostrar la prioridad
     ws.getCell(`P${r}`).value = it.aleacion || '';
     ws.getCell(`Q${r}`).value = (getWTRegistroPlanillaV9(it.soKey, it.legacySoKey).observacion || it.observacion || '');
     ws.getCell(`R${r}`).value = '';
@@ -3862,7 +3865,7 @@ function planillaPaginaHTMLV8(items, pageIndex){
     const wt = getWTValorPlanillaV9(it) || it.wt || '';
     const obs = getWTRegistroPlanillaV9(it.soKey, it.legacySoKey).observacion || it.observacion || '';
     rows.push(`<tr class="data-row">
-      <td class="blank"></td><td class="blank"></td><td>${i+1}</td><td>${escWTPC(it.canasta||'')}</td><td>${escWTPC(it.soDisplay||'')}</td><td>${escWTPC(it.referencia||'')}</td><td>${escWTPC(it.pzs||'')}</td><td>${escWTPC(it.long||'')}</td><td>${escWTPC(it.kg||'')}</td><td>${escWTPC(it.cliente||'')}</td><td>${escWTPC(it.acabado||'')}</td><td>${escWTPC(it.prensa||'')}</td><td class="wt-cell ${wt?'con-wt':''}" data-so-key="${escWTPC(it.soKey||'')}" data-legacy-so-key="${escWTPC(it.legacySoKey||'')}" data-ref-key="${escWTPC(it.refKey||'')}" data-so-display="${escWTPC(it.soDisplay||'')}" data-referencia="${escWTPC(it.referencia||'')}" onclick="abrirEvidenciasWTPCV6 && abrirEvidenciasWTPCV6('${escWTPC(it.soKey||'')}','${escWTPC(it.refKey||'')}','${escWTPC(it.soDisplay||'')}','${escWTPC(it.referencia||'')}','${escWTPC(it.legacySoKey||'')}')">${escWTPC(wt)}</td><td>${escWTPC(it.temple||'')}</td><td></td><td>${escWTPC(it.aleacion||'')}</td><td class="reproceso-cell" data-so-key="${escWTPC(it.soKey||'')}" data-legacy-so-key="${escWTPC(it.legacySoKey||'')}">${escWTPC(obs)}</td><td colspan="2"></td></tr>`);
+      <td class="blank"></td><td class="blank"></td><td>${i+1}</td><td>${escWTPC(it.canasta||'')}</td><td>${escWTPC(it.soDisplay||'')}</td><td>${escWTPC(it.referencia||'')}</td><td>${escWTPC(it.pzs||'')}</td><td>${escWTPC(it.long||'')}</td><td>${escWTPC(it.kg||'')}</td><td>${escWTPC(it.cliente||'')}</td><td>${escWTPC(it.acabado||'')}</td><td>${escWTPC(it.prensa||'')}</td><td class="wt-cell ${wt?'con-wt':''}" data-so-key="${escWTPC(it.soKey||'')}" data-legacy-so-key="${escWTPC(it.legacySoKey||'')}" data-ref-key="${escWTPC(it.refKey||'')}" data-so-display="${escWTPC(it.soDisplay||'')}" data-referencia="${escWTPC(it.referencia||'')}" onclick="abrirEvidenciasWTPCV6 && abrirEvidenciasWTPCV6('${escWTPC(it.soKey||'')}','${escWTPC(it.refKey||'')}','${escWTPC(it.soDisplay||'')}','${escWTPC(it.referencia||'')}','${escWTPC(it.legacySoKey||'')}')">${escWTPC(wt)}</td><td>${escWTPC(it.temple||'')}</td><td>${escWTPC(it.prio||'')}</td><td>${escWTPC(it.aleacion||'')}</td><td class="reproceso-cell" data-so-key="${escWTPC(it.soKey||'')}" data-legacy-so-key="${escWTPC(it.legacySoKey||'')}">${escWTPC(obs)}</td><td colspan="2"></td></tr>`);
   }
   return `<div class="planilla-page-break"><table class="planilla-oficial" border="1">
     <colgroup><col style="width:4%"><col style="width:4%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:7%"><col style="width:9%"><col style="width:7%"><col style="width:6%"><col style="width:6.5%"><col style="width:12%"><col style="width:14%"><col style="width:5.5%"><col style="width:4%"><col style="width:5.5%"><col style="width:7%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:7%"></colgroup>
@@ -3907,7 +3910,7 @@ function mostrarPlanillaPaginasOficialV8(){
     return !!sec && !sec.classList.contains('hidden');
   }
   function clonarPlanillaOficialV8(){
-    const cont = document.getElementById('planillaContainer');
+    const cont = docunment.getElementById('planillaContainer');
     if(!cont) return '';
     const clone = cont.cloneNode(true);
     // Quitar controles del navegador de contenido editable para que Excel imprima limpio.
@@ -4035,16 +4038,106 @@ function mostrarPlanillaPaginasOficialV8(){
   function getMeta(){ const h=document.getElementById('hornoPlanilla')?.value||''; return {fecha:document.getElementById('fechaPlanilla')?.value||'', turno:document.getElementById('turnoPlanilla')?.value||'', horno:h, supervisor:document.getElementById('selSupervisorEnvV11')?.value||'', respTomarTemple:document.getElementById('selRespTomarTempleV11')?.value||'', respReporte:document.getElementById('selRespReporteV11')?.value||'', codigoEquipo:document.getElementById('txtCodigoEquipoV11')?.value||h||'', horaInicio:document.getElementById('horaInicioHornoV11')?.value||'', horaFin:document.getElementById('horaFinHornoV11')?.value||'', tipoCiclo:document.getElementById('selTipoCicloV11')?.value||'2'}; }
   function getItems(){ if(typeof actualizarCeldasWTPlanillaV6==='function') actualizarCeldasWTPlanillaV6(); const base=Array.isArray(window.planillaItemsV8)?window.planillaItemsV8.slice():[]; const wtMap=window.wtSoMapPlanillaV6||{}; return base.map(it=>{ const reg=wtMap[it.soKey] || (it.legacySoKey?wtMap[it.legacySoKey]:null) || {}; return Object.assign({},it,{wt:reg.wt||it.wt||'', observacion:reg.observacion||it.observacion||''}); }); }
   function limpiar(doc){ const cols=['D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S']; for(let r=7;r<=42;r++) for(const c of cols) blank(doc,c+r); }
-  function llenar(doc,meta,items,page){ limpiar(doc); txt(doc,'Q3','HOJA  '+letra(page)); const serial=excelDate(meta.fecha); if(typeof serial==='number') num(doc,'G4',serial); else txt(doc,'G4',meta.fecha); txt(doc,'K4',labelTurnoEnvV11(meta.turno)); txt(doc,'Q4',meta.horno||''); items.slice(page*36,page*36+36).forEach((it,i)=>{ const r=7+i; txt(doc,`D${r}`,it.canasta||''); txt(doc,`E${r}`,it.soDisplay||''); txt(doc,`F${r}`,it.referencia||''); auto(doc,`G${r}`,it.pzs||''); auto(doc,`H${r}`,it.long||''); auto(doc,`I${r}`,it.kg||''); txt(doc,`J${r}`,it.cliente||''); txt(doc,`K${r}`,it.acabado||''); txt(doc,`L${r}`,it.prensa||''); txt(doc,`M${r}`,it.wt||''); txt(doc,`N${r}`,it.temple||''); blank(doc,`O${r}`); txt(doc,`P${r}`,it.aleacion||''); txt(doc,`Q${r}`,it.observacion||''); blank(doc,`R${r}`); blank(doc,`S${r}`); }); const hiTxt=horaAMPMTextoV12(meta.horaInicio); if(hiTxt!=='') txt(doc,'I44',hiTxt); else blank(doc,'I44'); const hfTxt=horaAMPMTextoV12(meta.horaFin); if(hfTxt!=='') txt(doc,'I45',hfTxt); else blank(doc,'I45'); txt(doc,'I47',meta.respTomarTemple||''); txt(doc,'E48',meta.supervisor||''); txt(doc,'I48',meta.respReporte||''); blank(doc,'I49'); txt(doc,'K48','CODIGO EQUIPO UTILIZADO: '); txt(doc,'M48',meta.codigoEquipo||''); ['M44','M45','M46'].forEach(x=>blank(doc,x)); const mark={'1':'M44','2':'M45','3':'M46'}[String(meta.tipoCiclo||'2')]||'M45'; txt(doc,mark,'X'); }
+  function llenar(doc,meta,items,page){
+    limpiar(doc);
+    txt(doc,'Q3','HOJA  '+letra(page));
+    const serial=excelDate(meta.fecha);
+    if(typeof serial==='number') num(doc,'G4',serial); else txt(doc,'G4',meta.fecha);
+    txt(doc,'K4',labelTurnoEnvV11(meta.turno));
+    txt(doc,'Q4',meta.horno||'');
+    items.slice(page*36,page*36+36).forEach((it,i)=>{
+      const r=7+i;
+      txt(doc,`D${r}`,it.canasta||'');
+      txt(doc,`E${r}`,it.soDisplay||'');
+      txt(doc,`F${r}`,it.referencia||'');
+      auto(doc,`G${r}`,it.pzs||'');
+      auto(doc,`H${r}`,it.long||'');
+      auto(doc,`I${r}`,it.kg||'');
+      txt(doc,`J${r}`,it.cliente||'');
+      txt(doc,`K${r}`,it.acabado||'');
+      txt(doc,`L${r}`,it.prensa||'');
+      txt(doc,`M${r}`,it.wt||'');
+      txt(doc,`N${r}`,it.temple||'');
+      txt(doc,`O${r}`,it.prio||'');
+      txt(doc,`P${r}`,it.aleacion||'');
+      txt(doc,`Q${r}`,it.observacion||'');
+      blank(doc,`R${r}`);
+      blank(doc,`S${r}`);
+    });
+    const hiTxt=horaAMPMTextoV12(meta.horaInicio);
+    if(hiTxt!=='') txt(doc,'I44',hiTxt); else blank(doc,'I44');
+    const hfTxt=horaAMPMTextoV12(meta.horaFin);
+    if(hfTxt!=='') txt(doc,'I45',hfTxt); else blank(doc,'I45');
+    txt(doc,'I47',meta.respTomarTemple||'');
+    txt(doc,'E48',meta.supervisor||'');
+    txt(doc,'I48',meta.respReporte||'');
+    blank(doc,'I49');
+    txt(doc,'K48','CODIGO EQUIPO UTILIZADO: ');
+    txt(doc,'M48',meta.codigoEquipo||'');
+    ['M44','M45','M46'].forEach(x=>blank(doc,x));
+    const mark={'1':'M44','2':'M45','3':'M46'}[String(meta.tipoCiclo||'2')]||'M45';
+    txt(doc,mark,'X');
+  }
   function addRel(relsXml,rId,sheetFile){ return relsXml.replace('</Relationships>',`<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/${sheetFile}"/></Relationships>`); }
   function addCT(ctXml,part,type){ if(ctXml.includes(`PartName="${part}"`)) return ctXml; return ctXml.replace('</Types>',`<Override PartName="${part}" ContentType="${type}"/></Types>`); }
   function maxRid(rels){ return Math.max(2,...Array.from(rels.matchAll(/Id="rId(\d+)"/g)).map(m=>Number(m[1]))); }
   async function construirWorkbook(){ if(typeof JSZip==='undefined'){ alert('No cargó JSZip. Revisa internet o monta en hosting.'); throw new Error('JSZip no disponible'); } const items=getItems(); if(!items.length) throw new Error('Primero genera la planilla de envejecimiento.'); const meta=getMeta(); const zip=await JSZip.loadAsync(await cargarTemplateV11()); const pages=Math.max(1,Math.ceil(items.length/36)); const baseSheet=await zip.file('xl/worksheets/sheet1.xml').async('string'); const baseSheetRels=zip.file('xl/worksheets/_rels/sheet1.xml.rels')?await zip.file('xl/worksheets/_rels/sheet1.xml.rels').async('string'):null; const baseDrawing=zip.file('xl/drawings/drawing1.xml')?await zip.file('xl/drawings/drawing1.xml').async('string'):null; const baseDrawingRels=zip.file('xl/drawings/_rels/drawing1.xml.rels')?await zip.file('xl/drawings/_rels/drawing1.xml.rels').async('string'):null; let workbookXml=await zip.file('xl/workbook.xml').async('string'); let workbookRels=await zip.file('xl/_rels/workbook.xml.rels').async('string'); let contentTypes=await zip.file('[Content_Types].xml').async('string'); const docA=parseXml(baseSheet); llenar(docA,meta,items,0); zip.file('xl/worksheets/sheet1.xml',ser(docA)); const added=[]; let nextRid=maxRid(workbookRels)+1; let nextSheetId=Math.max(10,...Array.from(workbookXml.matchAll(/sheetId="(\d+)"/g)).map(m=>Number(m[1])))+1; for(let p=1;p<pages;p++){ const sheetNum=p+2; const sheetFile=`sheet${sheetNum}.xml`; const rId=`rId${nextRid++}`; const name=safeSheetName(`HOJA ${letra(p)}`); const doc=parseXml(baseSheet); Array.from(doc.getElementsByTagNameNS(NS,'sheetView')).forEach(v=>v.removeAttribute('tabSelected')); llenar(doc,meta,items,p); zip.file(`xl/worksheets/${sheetFile}`,ser(doc)); if(baseSheetRels) zip.file(`xl/worksheets/_rels/sheet${sheetNum}.xml.rels`,baseSheetRels.replace(/drawing1\.xml/g,`drawing${sheetNum}.xml`).replace(/printerSettings1\.bin/g,`printerSettings${sheetNum}.bin`)); if(baseDrawing) zip.file(`xl/drawings/drawing${sheetNum}.xml`,baseDrawing); if(baseDrawingRels) zip.file(`xl/drawings/_rels/drawing${sheetNum}.xml.rels`,baseDrawingRels); if(zip.file('xl/printerSettings/printerSettings1.bin')){ const ps=await zip.file('xl/printerSettings/printerSettings1.bin').async('uint8array'); zip.file(`xl/printerSettings/printerSettings${sheetNum}.bin`,ps); } workbookRels=addRel(workbookRels,rId,sheetFile); contentTypes=addCT(contentTypes,`/xl/worksheets/${sheetFile}`,'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'); contentTypes=addCT(contentTypes,`/xl/drawings/drawing${sheetNum}.xml`,'application/vnd.openxmlformats-officedocument.drawing+xml'); added.push({name,sheetId:String(nextSheetId++),rId}); } if(added.length){ const tags=workbookXml.match(/<sheet\b[^>]*>/g)||[]; const first=tags.find(x=>/r:id="rId1"/.test(x))||tags[0]; const nombres=tags.find(x=>/name="NOMBRES"/.test(x))||tags.find(x=>/r:id="rId2"/.test(x)); const newTags=[first].concat(added.map(x=>`<sheet name="${safeXml(x.name)}" sheetId="${x.sheetId}" r:id="${x.rId}"/>`)); if(nombres) newTags.push(nombres); workbookXml=workbookXml.replace(/<sheets>[\s\S]*?<\/sheets>/,`<sheets>${newTags.join('')}</sheets>`); } zip.file('xl/workbook.xml',workbookXml); zip.file('xl/_rels/workbook.xml.rels',workbookRels); zip.file('[Content_Types].xml',contentTypes); return await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); }
   async function descargarOficial(modo){ try{ const blob=await construirWorkbook(); const m=getMeta(); const f=(m.fecha||'').replaceAll('-',''); const h=(m.horno||'HORNO').replace(/\s+/g,'_'); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`PROCESO_ENVEJECIMIENTO_OFICIAL_${f}_T${m.turno||''}_${h}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); if(modo==='imprimir') alert('Se descargó el Excel oficial. Imprímelo desde Excel para conservar el formato aprobado.'); }catch(e){ console.error(e); alert('No se pudo generar el Excel oficial: '+(e.message||e)); } }
   async function sharedStrings(zip){ const out={}; try{ const txt=await zip.file('xl/sharedStrings.xml').async('string'); const doc=parseXml(txt); Array.from(doc.getElementsByTagNameNS(NS,'si')).forEach((si,i)=>{ out[i]=Array.from(si.getElementsByTagNameNS(NS,'t')).map(t=>t.textContent||'').join(''); }); }catch(e){} return out; }
-  async function leerNombres(){ try{ const zip=await JSZip.loadAsync(await cargarTemplateV11()); const ss=await sharedStrings(zip); const xml=await zip.file('xl/worksheets/sheet2.xml').async('string'); const doc=parseXml(xml); const cols={supervisores:[],horneros:[],realizo:[]}; Array.from(doc.getElementsByTagNameNS(NS,'c')).forEach(c=>{ const ref=c.getAttribute('r')||''; const col=ref.replace(/\d+/g,''); const row=Number(ref.replace(/\D+/g,'')); if(row<2) return; const v=c.getElementsByTagNameNS(NS,'v')[0]; if(!v) return; const val=c.getAttribute('t')==='s'?ss[Number(v.textContent)]:v.textContent; if(!val) return; if(col==='A') cols.supervisores.push(val); if(col==='B') cols.horneros.push(val); if(col==='C') cols.realizo.push(val); }); return {supervisores:[...new Set(cols.supervisores)], horneros:[...new Set(cols.horneros)], realizo:[...new Set(cols.realizo)]}; }catch(e){ return {supervisores:['DONYS BARBOZA'],horneros:['ELDER SALCEDO','JAIRO ZAPATA'],realizo:['DONYS BARBOZA']}; } }
+  const NOMBRE_EXCLUIDO_ENV_V13 = atob('RUxERVIgU0FMQ0VETw==');
+  function nombrePermitidoEnvV13(valor){
+    return String(valor||'').trim().toUpperCase() !== NOMBRE_EXCLUIDO_ENV_V13;
+  }
+  async function leerNombres(){
+    try{
+      const zip=await JSZip.loadAsync(await cargarTemplateV11());
+      const ss=await sharedStrings(zip);
+      const xml=await zip.file('xl/worksheets/sheet2.xml').async('string');
+      const doc=parseXml(xml);
+      const cols={supervisores:[],horneros:[],realizo:[]};
+      Array.from(doc.getElementsByTagNameNS(NS,'c')).forEach(c=>{
+        const ref=c.getAttribute('r')||'';
+        const col=ref.replace(/\d+/g,'');
+        const row=Number(ref.replace(/\D+/g,''));
+        if(row<2) return;
+        const v=c.getElementsByTagNameNS(NS,'v')[0];
+        if(!v) return;
+        const val=c.getAttribute('t')==='s'?ss[Number(v.textContent)]:v.textContent;
+        if(!val || !nombrePermitidoEnvV13(val)) return;
+        if(col==='A') cols.supervisores.push(val);
+        if(col==='B') cols.horneros.push(val);
+        if(col==='C') cols.realizo.push(val);
+      });
+      return {
+        supervisores:[...new Set(cols.supervisores)],
+        horneros:[...new Set(cols.horneros)],
+        realizo:[...new Set(cols.realizo)]
+      };
+    }catch(e){
+      return {supervisores:['DONYS BARBOZA'],horneros:['JAIRO ZAPATA'],realizo:['DONYS BARBOZA']};
+    }
+  }
   function opts(arr,sel){ return ['<option value="">-- Selecciona --</option>'].concat((arr||[]).map(v=>`<option ${v===sel?'selected':''}>${String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}</option>`)).join(''); }
-  async function controles(){ const sec=document.getElementById('planillaEnvejecimientoSection'); if(!sec||document.getElementById('controlesFormatoOficialV11')) return; const card=document.createElement('div'); card.id='controlesFormatoOficialV11'; card.className='card'; card.style.marginBottom='12px'; card.innerHTML=`<div style="font-weight:700;color:#0f172a;margin-bottom:8px">Datos del formato oficial</div><div class="grid-formato-v11"><label>Supervisor<select id="selSupervisorEnvV11"></select></label><label>Responsable de tomar temple<select id="selRespTomarTempleV11"></select></label><label>Responsable de realizar reporte<select id="selRespReporteV11"></select></label><label>Hora inicio horno<input id="horaInicioHornoV11" type="time"></label><label>Hora final horno<input id="horaFinHornoV11" type="time"></label><label>Tipo ciclo<select id="selTipoCicloV11"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label><label>Código equipo utilizado<input id="txtCodigoEquipoV11" type="text" placeholder="Ej: HORNO 7-3"></label></div>`; const first=sec.querySelector('.card'); if(first&&first.nextSibling) first.parentNode.insertBefore(card,first.nextSibling); else sec.insertBefore(card,sec.firstChild); const n=await leerNombres(); document.getElementById('selSupervisorEnvV11').innerHTML=opts(n.supervisores,'DONYS BARBOZA'); document.getElementById('selRespTomarTempleV11').innerHTML=opts(n.horneros,'ELDER SALCEDO'); document.getElementById('selRespReporteV11').innerHTML=opts(n.realizo,'DONYS BARBOZA'); const inp=document.getElementById('txtCodigoEquipoV11'); if(inp&&!inp.value) inp.value=document.getElementById('hornoPlanilla')?.value||''; document.getElementById('hornoPlanilla')?.addEventListener('change',()=>{ if(inp&&!inp.value) inp.value=document.getElementById('hornoPlanilla')?.value||''; }); }
+  async function controles(){
+    const sec=document.getElementById('planillaEnvejecimientoSection');
+    if(!sec||document.getElementById('controlesFormatoOficialV11')) return;
+    const card=document.createElement('div');
+    card.id='controlesFormatoOficialV11';
+    card.className='card';
+    card.style.marginBottom='12px';
+    card.innerHTML=`<div style="font-weight:700;color:#0f172a;margin-bottom:8px">Datos del formato oficial</div><div class="grid-formato-v11"><label>Supervisor<select id="selSupervisorEnvV11"></select></label><label>Responsable de tomar temple<select id="selRespTomarTempleV11"></select></label><label>Responsable de realizar reporte<select id="selRespReporteV11"></select></label><label>Hora inicio horno<input id="horaInicioHornoV11" type="time"></label><label>Hora final horno<input id="horaFinHornoV11" type="time"></label><label>Tipo ciclo<select id="selTipoCicloV11"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label><label>Código equipo utilizado<input id="txtCodigoEquipoV11" type="text" placeholder="Ej: HORNO 7-3"></label></div>`;
+    const first=sec.querySelector('.card');
+    if(first&&first.nextSibling) first.parentNode.insertBefore(card,first.nextSibling); else sec.insertBefore(card,sec.firstChild);
+    const n=await leerNombres();
+    document.getElementById('selSupervisorEnvV11').innerHTML=opts(n.supervisores,'DONYS BARBOZA');
+    document.getElementById('selRespTomarTempleV11').innerHTML=opts(n.horneros,'');
+    document.getElementById('selRespReporteV11').innerHTML=opts(n.realizo,'DONYS BARBOZA');
+    const inp=document.getElementById('txtCodigoEquipoV11');
+    if(inp&&!inp.value) inp.value=document.getElementById('hornoPlanilla')?.value||'';
+    document.getElementById('hornoPlanilla')?.addEventListener('change',()=>{
+      if(inp&&!inp.value) inp.value=document.getElementById('hornoPlanilla')?.value||'';
+    });
+  }
   function css(){ if(document.getElementById('cssFormatoV11')) return; const st=document.createElement('style'); st.id='cssFormatoV11'; st.textContent='.grid-formato-v11{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.grid-formato-v11 label{font-size:12px;font-weight:700;color:#334155}.grid-formato-v11 select,.grid-formato-v11 input{width:100%;padding:7px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#111}'; document.head.appendChild(st); }
   window.exportarPlanillaExcelOficialV11=()=>descargarOficial('descargar');
   window.imprimirPlanillaExactaV11=()=>descargarOficial('imprimir');
